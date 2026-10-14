@@ -1,0 +1,74 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Dev/QA artifacts (scripts/screenshot.js output) — throwaway, not source.
+scripts/.screenshots/
+
+# Dependencies (Crucial to ignore so Claude doesn't waste tokens scanning them)
+node_modules/
+.pnpm-store/
+.yarn/
+
+# Build and Output Directories
+dist/
+build/
+out/
+.vite/
+
+# Claude Code & AI Tooling Context/Caches
+.claude/
+*.claude/
+
+# Environment Variables & Local Configs
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# System & OS Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor Specific Files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Testing & Coverage Outputs
+coverage/
+.nyc_output/
+
+# Context & Design Files (Local AI context only)
+/docs/
+

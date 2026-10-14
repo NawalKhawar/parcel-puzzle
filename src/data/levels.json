@@ -1,0 +1,65 @@
+[
+  {
+    "id": "level-001",
+    "rows": 2,
+    "cols": 4,
+    "blocked": [],
+    "pieces": ["bar4", "bar4"],
+    "difficulty": "easy",
+    "reward": 8
+  },
+  {
+    "id": "level-002",
+    "rows": 3,
+    "cols": 4,
+    "blocked": [],
+    "pieces": ["p5", "p5", "dot", "dot"],
+    "difficulty": "easy",
+    "reward": 10
+  },
+  {
+    "id": "level-003",
+    "rows": 4,
+    "cols": 4,
+    "blocked": [],
+    "pieces": ["p5", "p5", "tri_l", "domino_v", "dot"],
+    "difficulty": "easy",
+    "reward": 12
+  },
+  {
+    "id": "level-004",
+    "rows": 4,
+    "cols": 4,
+    "blocked": [[0, 0]],
+    "pieces": ["plus", "domino_h", "domino_v", "tri_l", "tri_l"],
+    "difficulty": "medium",
+    "reward": 14
+  },
+  {
+    "id": "level-005",
+    "rows": 4,
+    "cols": 5,
+    "blocked": [[1, 2]],
+    "pieces": ["p5", "t4", "domino_v", "t4", "domino_h", "domino_h"],
+    "difficulty": "medium",
+    "reward": 16
+  },
+  {
+    "id": "level-006",
+    "rows": 5,
+    "cols": 5,
+    "blocked": [[2, 2]],
+    "pieces": ["p5", "t4", "dot", "domino_v", "plus", "l4", "dot", "dot", "dot"],
+    "difficulty": "hard",
+    "reward": 20
+  },
+  {
+    "id": "level-007",
+    "rows": 5,
+    "cols": 5,
+    "blocked": [[0, 4], [4, 0]],
+    "pieces": ["p5", "p5", "domino_v", "plus", "l4", "dot", "dot"],
+    "difficulty": "hard",
+    "reward": 20
+  }
+]
