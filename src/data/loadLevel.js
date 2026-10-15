@@ -1,49 +1,57 @@
 /**
  * loadLevel.js
  *
- * Validates and normalizes raw level data (as it would come from levels.json) against
- * the schema documented in levels.schema.md, and provides a convenience constructor
- * for turning a validated level into a ready-to-play src/core/Grid instance.
+ * Validates raw level data (as it comes from levels.json) against the schema documented
+ * in levels.schema.md, and provides a convenience constructor for turning a validated
+ * truck (one packing puzzle) into a ready-to-play src/core/Grid instance.
  *
- * This is the single gate raw level data must pass through before anything else in the
- * game (the Phaser scene, the solver, tests) touches it — see levels.schema.md for why
- * that matters and what's checked. Must never import 'phaser' — see "Architectural
- * boundary" in PROJECT_STRUCTURE.md.
+ * Vocabulary: a LEVEL is one in-game day; it contains several TRUCKS, and each truck is
+ * one packing puzzle (a board plus the pieces that must exactly fill it).
+ *
+ * This is the single gate raw data must pass through before anything else in the game
+ * (the Phaser scenes, the solver, tests) touches it. Must never import 'phaser' - see
+ * "Architectural boundary" in PROJECT_STRUCTURE.md.
  */
 
 import { Grid } from '../core/Grid.js';
 import { isKnownShape, getShapeCellCount } from '../core/Shape.js';
 
 /**
- * @typedef {Object} RawLevel
+ * @typedef {Object} RawTruck
  * @property {string} id
  * @property {number} rows
  * @property {number} cols
  * @property {Array<[number, number]>} blocked
  * @property {string[]} pieces
  * @property {'easy' | 'medium' | 'hard'} [difficulty]
+ * @property {number} [difficultyScore]
  * @property {number} [reward]
  */
 
 /**
- * Validates a single raw level object and returns it unchanged (levels.json is already
- * in the shape the game consumes directly — "normalizing" here is really just
- * validating and defaulting optional fields, not reshaping data).
- *
- * @param {RawLevel} raw
- * @returns {RawLevel} the same level object, proven valid.
- * @throws {Error} with a message naming the offending level id (or its index/object
- *   shape, if even `id` itself is missing/invalid) and exactly which rule failed.
+ * @typedef {Object} RawLevel
+ * @property {string} id
+ * @property {RawTruck[]} trucks
  */
-export function loadLevel(raw) {
-    const label = raw && typeof raw.id === 'string' && raw.id.length > 0 ? `level "${raw.id}"` : 'a level with no valid id';
 
+/**
+ * Validates a single truck (puzzle) object and returns it unchanged - "normalizing"
+ * here is really just validating, since levels.json is already in the shape the game
+ * consumes directly.
+ *
+ * @param {RawTruck} raw
+ * @returns {RawTruck} the same object, proven valid.
+ * @throws {Error} naming the offending truck id and exactly which rule failed.
+ */
+export function loadTruck(raw) {
     if (!raw || typeof raw !== 'object') {
-        throw new Error(`Invalid level data: expected an object, got ${JSON.stringify(raw)}`);
+        throw new Error(`Invalid truck data: expected an object, got ${JSON.stringify(raw)}`);
     }
     if (typeof raw.id !== 'string' || raw.id.length === 0) {
-        throw new Error(`Invalid level data: "id" must be a non-empty string (got ${JSON.stringify(raw.id)})`);
+        throw new Error(`Invalid truck data: "id" must be a non-empty string (got ${JSON.stringify(raw.id)})`);
     }
+    const label = `truck "${raw.id}"`;
+
     if (!Number.isInteger(raw.rows) || raw.rows <= 0) {
         throw new Error(`${label}: "rows" must be a positive integer (got ${JSON.stringify(raw.rows)})`);
     }
@@ -79,21 +87,25 @@ export function loadLevel(raw) {
         }
     }
 
+    // Exact-cover cell count: pieces must have exactly as many cells as the board has
+    // open cells. Catches the commonest authoring mistake (wrong pieces for the grid)
+    // at load time instead of as a confusing dead-end in play.
     const totalPieceCells = raw.pieces.reduce((sum, shapeId) => sum + getShapeCellCount(shapeId), 0);
-    const totalBoardCells = raw.rows * raw.cols;
-    const openCells = totalBoardCells - raw.blocked.length;
+    const openCells = raw.rows * raw.cols - raw.blocked.length;
     if (totalPieceCells !== openCells) {
         throw new Error(
             `${label}: pieces cover ${totalPieceCells} cells but the board has ${openCells} open cells ` +
-                `(${raw.rows}x${raw.cols} grid minus ${raw.blocked.length} blocked) — these must match exactly ` +
-                `for the level to be fillable at all.`
+                `(${raw.rows}x${raw.cols} grid minus ${raw.blocked.length} blocked) - these must match exactly ` +
+                `for the truck to be fillable at all.`
         );
     }
 
     if (raw.difficulty !== undefined && !['easy', 'medium', 'hard'].includes(raw.difficulty)) {
         throw new Error(`${label}: "difficulty" must be one of 'easy' | 'medium' | 'hard' (got ${JSON.stringify(raw.difficulty)})`);
     }
-
+    if (raw.difficultyScore !== undefined && !(typeof raw.difficultyScore === 'number' && raw.difficultyScore >= 0 && raw.difficultyScore <= 1)) {
+        throw new Error(`${label}: "difficultyScore", if present, must be a number between 0 and 1 (got ${JSON.stringify(raw.difficultyScore)})`);
+    }
     if (raw.reward !== undefined && (!Number.isInteger(raw.reward) || raw.reward <= 0)) {
         throw new Error(`${label}: "reward", if present, must be a positive integer (got ${JSON.stringify(raw.reward)})`);
     }
@@ -102,39 +114,76 @@ export function loadLevel(raw) {
 }
 
 /**
- * Validates an entire array of raw levels (e.g. the full contents of levels.json),
- * additionally checking that every level's "id" is unique across the set — a
- * duplicate id would silently break level-select/save-data lookups, so it's treated
- * as a hard validation failure here rather than left for someone to discover later.
+ * Validates one level (day): a non-empty id plus a non-empty list of valid trucks whose
+ * ids are unique within the level.
  *
- * @param {RawLevel[]} rawLevels
- * @returns {RawLevel[]} the same array, with every entry proven valid.
- * @throws {Error} on the first invalid level, or on a duplicate id.
+ * @param {RawLevel} raw
+ * @returns {RawLevel} the same object, proven valid.
+ * @throws {Error} naming the offending level/truck and the rule that failed.
  */
-export function loadLevels(rawLevels) {
-    if (!Array.isArray(rawLevels)) {
-        throw new Error(`Invalid level set: expected an array, got ${JSON.stringify(rawLevels)}`);
+export function loadLevel(raw) {
+    if (!raw || typeof raw !== 'object') {
+        throw new Error(`Invalid level data: expected an object, got ${JSON.stringify(raw)}`);
+    }
+    if (typeof raw.id !== 'string' || raw.id.length === 0) {
+        throw new Error(`Invalid level data: "id" must be a non-empty string (got ${JSON.stringify(raw.id)})`);
+    }
+    if (!Array.isArray(raw.trucks) || raw.trucks.length === 0) {
+        throw new Error(`level "${raw.id}": "trucks" must be a non-empty array (got ${JSON.stringify(raw.trucks)})`);
     }
 
-    const seenIds = new Set();
+    const seenTruckIds = new Set();
+    for (const truck of raw.trucks) {
+        loadTruck(truck);
+        if (seenTruckIds.has(truck.id)) {
+            throw new Error(`level "${raw.id}": duplicate truck id "${truck.id}"`);
+        }
+        seenTruckIds.add(truck.id);
+    }
+    return raw;
+}
+
+/**
+ * Validates the whole level list (e.g. all of levels.json), additionally checking that
+ * level ids are unique and that truck ids are unique across the entire game - a
+ * duplicate id would silently break save-data/lookup code later, so it's a hard failure.
+ *
+ * @param {RawLevel[]} rawLevels
+ * @returns {RawLevel[]} the same array, every entry proven valid.
+ * @throws {Error} on the first invalid level/truck, or on a duplicate id.
+ */
+export function loadLevels(rawLevels) {
+    if (!Array.isArray(rawLevels) || rawLevels.length === 0) {
+        throw new Error(`Invalid level set: expected a non-empty array, got ${JSON.stringify(rawLevels)}`);
+    }
+
+    const seenLevelIds = new Set();
+    const seenTruckIds = new Set();
     for (const raw of rawLevels) {
         loadLevel(raw);
-        if (seenIds.has(raw.id)) {
-            throw new Error(`Duplicate level id "${raw.id}" — level ids must be unique across the level set`);
+        if (seenLevelIds.has(raw.id)) {
+            throw new Error(`Duplicate level id "${raw.id}" - level ids must be unique across the level set`);
         }
-        seenIds.add(raw.id);
+        seenLevelIds.add(raw.id);
+
+        for (const truck of raw.trucks) {
+            if (seenTruckIds.has(truck.id)) {
+                throw new Error(`Duplicate truck id "${truck.id}" - truck ids must be unique across the whole game`);
+            }
+            seenTruckIds.add(truck.id);
+        }
     }
     return rawLevels;
 }
 
 /**
- * Convenience constructor: builds a fresh, empty-of-placements src/core/Grid for a
- * validated level, ready for the solver or the Phaser scene to start placing pieces
- * into. Does not itself re-validate the level — call loadLevel/loadLevels first.
+ * Convenience constructor: builds a fresh Grid (blocked cells set, nothing placed) for a
+ * validated truck, ready for the solver or the Phaser scene to place pieces into. Does
+ * not re-validate - call loadTruck/loadLevels first.
  *
- * @param {RawLevel} level - a level object already validated by loadLevel/loadLevels.
+ * @param {RawTruck} truck - a truck already validated by loadTruck/loadLevels.
  * @returns {Grid}
  */
-export function createGridForLevel(level) {
-    return new Grid(level.rows, level.cols, level.blocked);
+export function createGridForTruck(truck) {
+    return new Grid(truck.rows, truck.cols, truck.blocked);
 }

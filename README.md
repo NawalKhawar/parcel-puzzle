@@ -56,8 +56,24 @@ The game will open at `http://localhost:8080` in your browser. While the server 
 
 - **Click and drag** polyomino pieces from the tray (bottom) onto the grid (top) to place them
 - **Snap alignment:** Pieces snap to the grid when dragged nearby
-- **Undo, Reset, Pause buttons** in the top-right HUD
-- **Coin counter** shows your running total across the current shift (all 7 levels)
+- **Undo, Reset, Pause buttons** in the top-left HUD
+- **Coin counter** (top-left) shows your total earnings, which carry over from day to day
+
+## How the Game Flows
+
+- The title screen has a **Play** button, which starts level 1 right away.
+- The game has **30 levels** (each one is a day). Each level is a set of **trucks** (puzzles): level 1 has 3 (all easy), levels 2-7 have 4 (2 easy, 2 medium), levels 8-12 have 5 (2 easy, 2 medium, 1 hard), and levels 13-30 have 6 (2 easy, 2 medium, 2 hard). The header shows e.g. "Level 3 · Truck 2/4".
+- Difficulty ramps up within each day and over the course of the game.
+- After the last truck of a day, a popup shows trucks completed, money earned today and your total, with **Shop**, **Decorate** (both blank placeholders with a Back button for now) and **Next Day**.
+
+## Regenerating the Levels
+
+The levels in `src/data/levels.json` are generated. To change the number of trucks per day or the difficulty curve, edit the top of `scripts/generate-levels.js`, then run:
+```bash
+node scripts/generate-levels.js
+node scripts/validate-levels.js
+npm test
+```
 
 
 This is a fan project built with Phaser. Phaser is open source under the MIT License.

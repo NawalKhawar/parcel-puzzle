@@ -1,65 +1,1752 @@
 [
   {
-    "id": "level-001",
-    "rows": 2,
-    "cols": 4,
-    "blocked": [],
-    "pieces": ["bar4", "bar4"],
-    "difficulty": "easy",
-    "reward": 8
+    "id": "level-01",
+    "trucks": [
+      {
+        "id": "level-01-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["square", "square"],
+        "difficulty": "easy",
+        "difficultyScore": 0.01,
+        "reward": 8
+      },
+      {
+        "id": "level-01-truck-2",
+        "rows": 3,
+        "cols": 3,
+        "blocked": [],
+        "pieces": ["tri_i", "domino_v", "square"],
+        "difficulty": "easy",
+        "difficultyScore": 0.06,
+        "reward": 9
+      },
+      {
+        "id": "level-01-truck-3",
+        "rows": 3,
+        "cols": 3,
+        "blocked": [],
+        "pieces": ["tri_i", "dot", "domino_v", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.12,
+        "reward": 9
+      }
+    ]
   },
   {
-    "id": "level-002",
-    "rows": 3,
-    "cols": 4,
-    "blocked": [],
-    "pieces": ["p5", "p5", "dot", "dot"],
-    "difficulty": "easy",
-    "reward": 10
+    "id": "level-02",
+    "trucks": [
+      {
+        "id": "level-02-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["square", "domino_h", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.04,
+        "reward": 8
+      },
+      {
+        "id": "level-02-truck-2",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[0, 3]],
+        "pieces": ["dot", "domino_h", "domino_h", "domino_h", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.15,
+        "reward": 9
+      },
+      {
+        "id": "level-02-truck-3",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[0, 0]],
+        "pieces": ["domino_v", "tri_l", "dot", "domino_v", "p5", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.36,
+        "reward": 19
+      },
+      {
+        "id": "level-02-truck-4",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 0], [2, 3]],
+        "pieces": ["tri_l", "tri_i", "l4", "domino_v", "domino_h", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.42,
+        "reward": 20
+      }
+    ]
   },
   {
-    "id": "level-003",
-    "rows": 4,
-    "cols": 4,
-    "blocked": [],
-    "pieces": ["p5", "p5", "tri_l", "domino_v", "dot"],
-    "difficulty": "easy",
-    "reward": 12
+    "id": "level-03",
+    "trucks": [
+      {
+        "id": "level-03-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_v", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.04,
+        "reward": 8
+      },
+      {
+        "id": "level-03-truck-2",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[1, 3]],
+        "pieces": ["domino_v", "dot", "square", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.13,
+        "reward": 9
+      },
+      {
+        "id": "level-03-truck-3",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[0, 0]],
+        "pieces": ["domino_v", "domino_h", "dot", "p5", "domino_v", "tri_l"],
+        "difficulty": "medium",
+        "difficultyScore": 0.37,
+        "reward": 19
+      },
+      {
+        "id": "level-03-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 2], [3, 3]],
+        "pieces": ["tri_i", "dot", "tri_i", "tri_i", "dot", "domino_v", "p5"],
+        "difficulty": "medium",
+        "difficultyScore": 0.43,
+        "reward": 22
+      }
+    ]
   },
   {
-    "id": "level-004",
-    "rows": 4,
-    "cols": 4,
-    "blocked": [[0, 0]],
-    "pieces": ["plus", "domino_h", "domino_v", "tri_l", "tri_l"],
-    "difficulty": "medium",
-    "reward": 14
+    "id": "level-04",
+    "trucks": [
+      {
+        "id": "level-04-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["tri_i", "bar4", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.04,
+        "reward": 8
+      },
+      {
+        "id": "level-04-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[0, 3]],
+        "pieces": ["bar4", "dot", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.16,
+        "reward": 11
+      },
+      {
+        "id": "level-04-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 0]],
+        "pieces": ["domino_v", "tri_i", "bar4", "tri_i", "domino_v", "domino_v", "tri_i"],
+        "difficulty": "medium",
+        "difficultyScore": 0.37,
+        "reward": 23
+      },
+      {
+        "id": "level-04-truck-4",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 3], [1, 1]],
+        "pieces": ["plus", "tri_i", "dot", "tri_l", "dot", "tri_l"],
+        "difficulty": "medium",
+        "difficultyScore": 0.44,
+        "reward": 20
+      }
+    ]
   },
   {
-    "id": "level-005",
-    "rows": 4,
-    "cols": 5,
-    "blocked": [[1, 2]],
-    "pieces": ["p5", "t4", "domino_v", "t4", "domino_h", "domino_h"],
-    "difficulty": "medium",
-    "reward": 16
+    "id": "level-05",
+    "trucks": [
+      {
+        "id": "level-05-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_v", "domino_v", "square"],
+        "difficulty": "easy",
+        "difficultyScore": 0.04,
+        "reward": 8
+      },
+      {
+        "id": "level-05-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[0, 0]],
+        "pieces": ["square", "tri_i", "domino_h", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.16,
+        "reward": 11
+      },
+      {
+        "id": "level-05-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 4], [1, 5]],
+        "pieces": ["dot", "bar4", "dot", "tri_i", "l4", "tri_i"],
+        "difficulty": "medium",
+        "difficultyScore": 0.38,
+        "reward": 20
+      },
+      {
+        "id": "level-05-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 0], [1, 2]],
+        "pieces": ["square", "domino_v", "domino_h", "tri_i", "domino_h", "s4", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.44,
+        "reward": 22
+      }
+    ]
   },
   {
-    "id": "level-006",
-    "rows": 5,
-    "cols": 5,
-    "blocked": [[2, 2]],
-    "pieces": ["p5", "t4", "dot", "domino_v", "plus", "l4", "dot", "dot", "dot"],
-    "difficulty": "hard",
-    "reward": 20
+    "id": "level-06",
+    "trucks": [
+      {
+        "id": "level-06-truck-1",
+        "rows": 3,
+        "cols": 3,
+        "blocked": [],
+        "pieces": ["tri_i", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.05,
+        "reward": 9
+      },
+      {
+        "id": "level-06-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[2, 2]],
+        "pieces": ["bar4", "bar4", "dot", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.16,
+        "reward": 11
+      },
+      {
+        "id": "level-06-truck-3",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[1, 3], [3, 1]],
+        "pieces": ["t4", "domino_h", "tri_l", "dot", "tri_i", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.38,
+        "reward": 18
+      },
+      {
+        "id": "level-06-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 0], [2, 4]],
+        "pieces": ["tri_i", "dot", "dot", "t4", "bar4", "plus"],
+        "difficulty": "medium",
+        "difficultyScore": 0.45,
+        "reward": 22
+      }
+    ]
   },
   {
-    "id": "level-007",
-    "rows": 5,
-    "cols": 5,
-    "blocked": [[0, 4], [4, 0]],
-    "pieces": ["p5", "p5", "domino_v", "plus", "l4", "dot", "dot"],
-    "difficulty": "hard",
-    "reward": 20
+    "id": "level-07",
+    "trucks": [
+      {
+        "id": "level-07-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["dot", "tri_i", "tri_i", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.07,
+        "reward": 8
+      },
+      {
+        "id": "level-07-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[2, 1]],
+        "pieces": ["dot", "bar4", "bar4", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.16,
+        "reward": 11
+      },
+      {
+        "id": "level-07-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 0], [1, 3]],
+        "pieces": ["domino_v", "dot", "bar4", "square", "l4", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.38,
+        "reward": 20
+      },
+      {
+        "id": "level-07-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[2, 1], [2, 2]],
+        "pieces": ["tri_l", "domino_h", "domino_v", "bar4", "tri_l", "domino_h", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.46,
+        "reward": 22
+      }
+    ]
+  },
+  {
+    "id": "level-08",
+    "trucks": [
+      {
+        "id": "level-08-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["dot", "bar4", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.07,
+        "reward": 8
+      },
+      {
+        "id": "level-08-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[2, 3]],
+        "pieces": ["dot", "tri_i", "dot", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.18,
+        "reward": 11
+      },
+      {
+        "id": "level-08-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 5], [2, 1]],
+        "pieces": ["domino_v", "square", "tri_i", "s4", "domino_h", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.39,
+        "reward": 20
+      },
+      {
+        "id": "level-08-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 1], [2, 0]],
+        "pieces": ["domino_v", "dot", "bar4", "t4", "domino_v", "s4", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.47,
+        "reward": 22
+      },
+      {
+        "id": "level-08-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 0], [2, 2], [4, 1]],
+        "pieces": ["dot", "domino_v", "t4", "domino_h", "l4", "p5", "bar4", "p5"],
+        "difficulty": "hard",
+        "difficultyScore": 0.75,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-09",
+    "trucks": [
+      {
+        "id": "level-09-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_h", "dot", "tri_i", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.07,
+        "reward": 8
+      },
+      {
+        "id": "level-09-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[2, 0]],
+        "pieces": ["tri_i", "domino_v", "tri_i", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.19,
+        "reward": 11
+      },
+      {
+        "id": "level-09-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 2], [1, 2]],
+        "pieces": ["domino_v", "domino_h", "domino_v", "tri_i", "s4", "dot", "domino_h"],
+        "difficulty": "medium",
+        "difficultyScore": 0.4,
+        "reward": 20
+      },
+      {
+        "id": "level-09-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[2, 0], [2, 2]],
+        "pieces": ["domino_v", "dot", "l4", "dot", "bar4", "tri_l", "tri_i"],
+        "difficulty": "medium",
+        "difficultyScore": 0.48,
+        "reward": 22
+      },
+      {
+        "id": "level-09-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[2, 4], [4, 0], [4, 4]],
+        "pieces": ["domino_v", "s4", "domino_v", "plus", "dot", "plus", "domino_h", "domino_v", "t4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-10",
+    "trucks": [
+      {
+        "id": "level-10-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_v", "domino_h", "domino_h", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.07,
+        "reward": 8
+      },
+      {
+        "id": "level-10-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[1, 1]],
+        "pieces": ["tri_i", "domino_v", "domino_h", "domino_v", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.18,
+        "reward": 11
+      },
+      {
+        "id": "level-10-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 2], [2, 5]],
+        "pieces": ["dot", "s4", "bar4", "p5", "domino_h"],
+        "difficulty": "medium",
+        "difficultyScore": 0.4,
+        "reward": 20
+      },
+      {
+        "id": "level-10-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 2], [0, 3]],
+        "pieces": ["s4", "domino_h", "domino_v", "s4", "p5", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.48,
+        "reward": 22
+      },
+      {
+        "id": "level-10-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 4], [2, 3], [2, 5]],
+        "pieces": ["dot", "domino_h", "tri_l", "p5", "l4", "p5", "domino_h", "domino_v", "tri_i"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-11",
+    "trucks": [
+      {
+        "id": "level-11-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [],
+        "pieces": ["square", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.08,
+        "reward": 10
+      },
+      {
+        "id": "level-11-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[1, 1]],
+        "pieces": ["domino_h", "domino_v", "square", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.19,
+        "reward": 11
+      },
+      {
+        "id": "level-11-truck-3",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[2, 1], [3, 3]],
+        "pieces": ["l4", "t4", "tri_l", "dot", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.4,
+        "reward": 18
+      },
+      {
+        "id": "level-11-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 2], [3, 3]],
+        "pieces": ["domino_h", "dot", "p5", "domino_v", "tri_l", "plus"],
+        "difficulty": "medium",
+        "difficultyScore": 0.49,
+        "reward": 22
+      },
+      {
+        "id": "level-11-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[3, 2], [3, 4], [4, 3]],
+        "pieces": ["domino_v", "domino_h", "domino_h", "dot", "p5", "p5", "domino_v", "tri_l", "p5"],
+        "difficulty": "hard",
+        "difficultyScore": 0.77,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-12",
+    "trucks": [
+      {
+        "id": "level-12-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["dot", "domino_h", "tri_i", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.08,
+        "reward": 8
+      },
+      {
+        "id": "level-12-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[2, 2]],
+        "pieces": ["tri_i", "bar4", "dot", "dot", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.19,
+        "reward": 11
+      },
+      {
+        "id": "level-12-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 0], [1, 1]],
+        "pieces": ["tri_i", "domino_v", "s4", "tri_l", "domino_h", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.41,
+        "reward": 20
+      },
+      {
+        "id": "level-12-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 0], [3, 2]],
+        "pieces": ["p5", "tri_i", "tri_l", "tri_l", "dot", "domino_v", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.5,
+        "reward": 22
+      },
+      {
+        "id": "level-12-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 2], [1, 3], [4, 2]],
+        "pieces": ["tri_l", "dot", "p5", "t4", "domino_v", "tri_l", "domino_v", "domino_h", "p5"],
+        "difficulty": "hard",
+        "difficultyScore": 0.78,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-13",
+    "trucks": [
+      {
+        "id": "level-13-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [],
+        "pieces": ["bar4", "bar4", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.08,
+        "reward": 10
+      },
+      {
+        "id": "level-13-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[1, 0]],
+        "pieces": ["domino_v", "s4", "bar4", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.21,
+        "reward": 11
+      },
+      {
+        "id": "level-13-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 3], [2, 5]],
+        "pieces": ["tri_i", "tri_l", "dot", "dot", "t4", "bar4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.42,
+        "reward": 20
+      },
+      {
+        "id": "level-13-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[2, 2], [2, 4]],
+        "pieces": ["s4", "tri_i", "domino_h", "l4", "dot", "tri_l", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.5,
+        "reward": 22
+      },
+      {
+        "id": "level-13-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 0], [2, 0], [2, 5]],
+        "pieces": ["bar4", "domino_v", "t4", "s4", "l4", "dot", "square", "domino_v", "domino_v"],
+        "difficulty": "hard",
+        "difficultyScore": 0.74,
+        "reward": 35
+      },
+      {
+        "id": "level-13-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 0], [3, 3], [3, 5]],
+        "pieces": ["tri_l", "tri_l", "dot", "p5", "p5", "domino_h", "domino_v", "domino_v", "t4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.78,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-14",
+    "trucks": [
+      {
+        "id": "level-14-truck-1",
+        "rows": 3,
+        "cols": 3,
+        "blocked": [],
+        "pieces": ["dot", "domino_h", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.09,
+        "reward": 9
+      },
+      {
+        "id": "level-14-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[0, 3]],
+        "pieces": ["tri_l", "domino_h", "square", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.21,
+        "reward": 11
+      },
+      {
+        "id": "level-14-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 3], [2, 3]],
+        "pieces": ["dot", "domino_v", "bar4", "tri_l", "domino_v", "l4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.42,
+        "reward": 20
+      },
+      {
+        "id": "level-14-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 2], [0, 4]],
+        "pieces": ["dot", "l4", "tri_l", "domino_v", "p5", "domino_h", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.51,
+        "reward": 22
+      },
+      {
+        "id": "level-14-truck-5",
+        "rows": 4,
+        "cols": 7,
+        "blocked": [[0, 1], [0, 3], [0, 4]],
+        "pieces": ["l4", "tri_i", "tri_l", "dot", "domino_v", "tri_l", "s4", "domino_v", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.75,
+        "reward": 33
+      },
+      {
+        "id": "level-14-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[2, 2], [3, 1], [4, 2]],
+        "pieces": ["tri_l", "domino_v", "tri_l", "plus", "tri_l", "l4", "domino_v", "t4", "dot"],
+        "difficulty": "hard",
+        "difficultyScore": 0.8,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-15",
+    "trucks": [
+      {
+        "id": "level-15-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["dot", "square", "dot", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.08,
+        "reward": 8
+      },
+      {
+        "id": "level-15-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[1, 1]],
+        "pieces": ["dot", "domino_h", "tri_i", "domino_v", "dot", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.22,
+        "reward": 11
+      },
+      {
+        "id": "level-15-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 0], [1, 0]],
+        "pieces": ["domino_v", "l4", "domino_h", "p5", "dot", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.43,
+        "reward": 20
+      },
+      {
+        "id": "level-15-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 1], [3, 1]],
+        "pieces": ["dot", "domino_v", "domino_v", "domino_v", "dot", "tri_l", "tri_l", "t4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.52,
+        "reward": 22
+      },
+      {
+        "id": "level-15-truck-5",
+        "rows": 4,
+        "cols": 7,
+        "blocked": [[0, 1], [0, 2], [2, 3]],
+        "pieces": ["tri_l", "domino_v", "domino_v", "l4", "dot", "s4", "s4", "domino_h", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.75,
+        "reward": 33
+      },
+      {
+        "id": "level-15-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 5], [2, 2], [4, 4]],
+        "pieces": ["dot", "p5", "domino_v", "tri_l", "p5", "domino_v", "t4", "tri_l", "domino_v"],
+        "difficulty": "hard",
+        "difficultyScore": 0.78,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-16",
+    "trucks": [
+      {
+        "id": "level-16-truck-1",
+        "rows": 3,
+        "cols": 3,
+        "blocked": [],
+        "pieces": ["domino_h", "square", "dot", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.09,
+        "reward": 9
+      },
+      {
+        "id": "level-16-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[0, 3]],
+        "pieces": ["domino_h", "dot", "l4", "square"],
+        "difficulty": "easy",
+        "difficultyScore": 0.22,
+        "reward": 11
+      },
+      {
+        "id": "level-16-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 3], [2, 0]],
+        "pieces": ["domino_h", "tri_i", "tri_i", "dot", "tri_i", "dot", "p5"],
+        "difficulty": "medium",
+        "difficultyScore": 0.43,
+        "reward": 22
+      },
+      {
+        "id": "level-16-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[1, 3], [2, 0]],
+        "pieces": ["tri_i", "s4", "tri_i", "domino_v", "s4", "domino_h", "bar4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.53,
+        "reward": 26
+      },
+      {
+        "id": "level-16-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 2], [2, 4], [4, 0]],
+        "pieces": ["t4", "domino_h", "p5", "domino_v", "domino_v", "dot", "p5", "s4", "domino_v"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      },
+      {
+        "id": "level-16-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 1], [2, 0], [4, 4]],
+        "pieces": ["t4", "tri_l", "tri_l", "dot", "s4", "domino_v", "tri_l", "domino_v", "plus"],
+        "difficulty": "hard",
+        "difficultyScore": 0.8,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-17",
+    "trucks": [
+      {
+        "id": "level-17-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["dot", "domino_h", "dot", "domino_h", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.09,
+        "reward": 8
+      },
+      {
+        "id": "level-17-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[1, 3]],
+        "pieces": ["domino_h", "l4", "domino_h", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.23,
+        "reward": 11
+      },
+      {
+        "id": "level-17-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 1], [2, 3]],
+        "pieces": ["tri_i", "t4", "tri_l", "dot", "domino_h", "dot", "domino_h"],
+        "difficulty": "medium",
+        "difficultyScore": 0.44,
+        "reward": 20
+      },
+      {
+        "id": "level-17-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[2, 0], [2, 2]],
+        "pieces": ["tri_l", "s4", "dot", "tri_l", "domino_v", "dot", "t4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.53,
+        "reward": 22
+      },
+      {
+        "id": "level-17-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 4], [1, 0], [4, 0]],
+        "pieces": ["l4", "tri_l", "square", "domino_v", "tri_i", "tri_l", "t4", "tri_i", "dot"],
+        "difficulty": "hard",
+        "difficultyScore": 0.75,
+        "reward": 35
+      },
+      {
+        "id": "level-17-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 1], [2, 3], [3, 5]],
+        "pieces": ["tri_l", "dot", "tri_l", "p5", "t4", "domino_v", "domino_v", "s4", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.8,
+        "reward": 35
+      }
+    ]
+  },
+  {
+    "id": "level-18",
+    "trucks": [
+      {
+        "id": "level-18-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_v", "dot", "dot", "domino_h", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.1,
+        "reward": 8
+      },
+      {
+        "id": "level-18-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[0, 1]],
+        "pieces": ["plus", "dot", "domino_v", "dot", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.23,
+        "reward": 11
+      },
+      {
+        "id": "level-18-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[1, 3], [2, 1]],
+        "pieces": ["tri_l", "tri_l", "domino_v", "domino_h", "t4", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.44,
+        "reward": 20
+      },
+      {
+        "id": "level-18-truck-4",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 2], [3, 1]],
+        "pieces": ["dot", "dot", "l4", "domino_v", "l4", "tri_l", "tri_l"],
+        "difficulty": "medium",
+        "difficultyScore": 0.53,
+        "reward": 22
+      },
+      {
+        "id": "level-18-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 0], [2, 0], [2, 2]],
+        "pieces": ["tri_l", "domino_h", "dot", "s4", "l4", "bar4", "square", "domino_v", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      },
+      {
+        "id": "level-18-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 2], [3, 1], [4, 4], [4, 5]],
+        "pieces": ["l4", "t4", "domino_v", "domino_h", "dot", "tri_l", "tri_l", "tri_l", "l4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.82,
+        "reward": 34
+      }
+    ]
+  },
+  {
+    "id": "level-19",
+    "trucks": [
+      {
+        "id": "level-19-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [],
+        "pieces": ["square", "square", "dot", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.11,
+        "reward": 10
+      },
+      {
+        "id": "level-19-truck-2",
+        "rows": 3,
+        "cols": 4,
+        "blocked": [[2, 3]],
+        "pieces": ["p5", "dot", "dot", "domino_v", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.24,
+        "reward": 11
+      },
+      {
+        "id": "level-19-truck-3",
+        "rows": 3,
+        "cols": 6,
+        "blocked": [[0, 3], [2, 4]],
+        "pieces": ["dot", "dot", "tri_l", "tri_l", "square", "domino_h", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.44,
+        "reward": 20
+      },
+      {
+        "id": "level-19-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[3, 2], [3, 3]],
+        "pieces": ["tri_i", "domino_h", "dot", "square", "l4", "l4", "square"],
+        "difficulty": "medium",
+        "difficultyScore": 0.55,
+        "reward": 26
+      },
+      {
+        "id": "level-19-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 4], [3, 3], [4, 5]],
+        "pieces": ["domino_h", "domino_h", "l4", "p5", "dot", "p5", "domino_h", "domino_v", "t4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      },
+      {
+        "id": "level-19-truck-6",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[2, 3], [3, 1], [3, 5], [4, 2]],
+        "pieces": ["s4", "tri_l", "domino_v", "t4", "domino_v", "tri_i", "dot", "s4", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.8,
+        "reward": 34
+      }
+    ]
+  },
+  {
+    "id": "level-20",
+    "trucks": [
+      {
+        "id": "level-20-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_h", "tri_l", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.11,
+        "reward": 8
+      },
+      {
+        "id": "level-20-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[0, 2]],
+        "pieces": ["square", "square", "dot", "domino_h", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.24,
+        "reward": 14
+      },
+      {
+        "id": "level-20-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[2, 3], [3, 2]],
+        "pieces": ["t4", "domino_h", "domino_v", "tri_i", "domino_h", "dot", "bar4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.45,
+        "reward": 22
+      },
+      {
+        "id": "level-20-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[1, 2], [1, 4]],
+        "pieces": ["domino_h", "bar4", "domino_h", "t4", "l4", "l4", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.56,
+        "reward": 26
+      },
+      {
+        "id": "level-20-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 0], [3, 0], [3, 1]],
+        "pieces": ["t4", "domino_h", "domino_v", "domino_v", "s4", "dot", "tri_i", "s4", "plus"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      },
+      {
+        "id": "level-20-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[1, 3], [1, 5], [3, 6], [4, 0]],
+        "pieces": ["domino_v", "bar4", "l4", "bar4", "tri_l", "dot", "t4", "plus", "l4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.87,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-21",
+    "trucks": [
+      {
+        "id": "level-21-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [],
+        "pieces": ["domino_h", "domino_h", "bar4", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.11,
+        "reward": 10
+      },
+      {
+        "id": "level-21-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[2, 2]],
+        "pieces": ["tri_i", "domino_h", "domino_h", "square", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.25,
+        "reward": 14
+      },
+      {
+        "id": "level-21-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 3], [2, 4]],
+        "pieces": ["l4", "p5", "square", "dot", "domino_v", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.46,
+        "reward": 22
+      },
+      {
+        "id": "level-21-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[2, 0], [3, 3]],
+        "pieces": ["bar4", "tri_l", "domino_v", "domino_v", "square", "t4", "dot", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.58,
+        "reward": 26
+      },
+      {
+        "id": "level-21-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 5], [2, 5], [3, 3]],
+        "pieces": ["l4", "tri_l", "s4", "domino_v", "plus", "domino_v", "dot", "tri_i", "tri_i"],
+        "difficulty": "hard",
+        "difficultyScore": 0.76,
+        "reward": 35
+      },
+      {
+        "id": "level-21-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[1, 0], [4, 0], [4, 3], [4, 6]],
+        "pieces": ["domino_v", "s4", "t4", "t4", "s4", "dot", "bar4", "t4", "bar4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.87,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-22",
+    "trucks": [
+      {
+        "id": "level-22-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [],
+        "pieces": ["dot", "square", "tri_i", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.11,
+        "reward": 10
+      },
+      {
+        "id": "level-22-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[2, 4]],
+        "pieces": ["domino_v", "square", "tri_i", "domino_h", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.25,
+        "reward": 14
+      },
+      {
+        "id": "level-22-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 4], [1, 1]],
+        "pieces": ["tri_l", "s4", "domino_h", "domino_v", "domino_v", "tri_i", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.46,
+        "reward": 22
+      },
+      {
+        "id": "level-22-truck-4",
+        "rows": 5,
+        "cols": 5,
+        "blocked": [[1, 1], [1, 2]],
+        "pieces": ["domino_v", "t4", "domino_v", "bar4", "tri_i", "domino_v", "domino_h", "l4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.58,
+        "reward": 27
+      },
+      {
+        "id": "level-22-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 0], [1, 5], [3, 3]],
+        "pieces": ["s4", "tri_l", "tri_i", "bar4", "l4", "dot", "l4", "domino_v", "domino_h"],
+        "difficulty": "hard",
+        "difficultyScore": 0.77,
+        "reward": 35
+      },
+      {
+        "id": "level-22-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[1, 2], [3, 4], [3, 5], [4, 0]],
+        "pieces": ["l4", "p5", "tri_i", "square", "domino_v", "dot", "p5", "tri_i", "square"],
+        "difficulty": "hard",
+        "difficultyScore": 0.83,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-23",
+    "trucks": [
+      {
+        "id": "level-23-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [],
+        "pieces": ["tri_i", "dot", "domino_v", "bar4"],
+        "difficulty": "easy",
+        "difficultyScore": 0.11,
+        "reward": 10
+      },
+      {
+        "id": "level-23-truck-2",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[0, 3]],
+        "pieces": ["dot", "tri_i", "tri_i", "bar4", "bar4"],
+        "difficulty": "easy",
+        "difficultyScore": 0.26,
+        "reward": 15
+      },
+      {
+        "id": "level-23-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[3, 1], [3, 2]],
+        "pieces": ["domino_v", "plus", "dot", "domino_v", "domino_v", "domino_v", "t4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.46,
+        "reward": 22
+      },
+      {
+        "id": "level-23-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[1, 0], [1, 3]],
+        "pieces": ["tri_l", "domino_v", "domino_v", "domino_v", "l4", "dot", "bar4", "l4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.59,
+        "reward": 26
+      },
+      {
+        "id": "level-23-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 1], [1, 0], [1, 3]],
+        "pieces": ["s4", "l4", "domino_h", "dot", "p5", "domino_v", "l4", "domino_h", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.77,
+        "reward": 35
+      },
+      {
+        "id": "level-23-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[0, 2], [0, 5], [1, 6], [3, 4]],
+        "pieces": ["plus", "tri_l", "tri_l", "dot", "plus", "domino_v", "p5", "l4", "tri_i"],
+        "difficulty": "hard",
+        "difficultyScore": 0.88,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-24",
+    "trucks": [
+      {
+        "id": "level-24-truck-1",
+        "rows": 3,
+        "cols": 3,
+        "blocked": [],
+        "pieces": ["domino_h", "dot", "domino_h", "domino_v", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.12,
+        "reward": 9
+      },
+      {
+        "id": "level-24-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[2, 0]],
+        "pieces": ["domino_v", "domino_v", "tri_i", "dot", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.27,
+        "reward": 14
+      },
+      {
+        "id": "level-24-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 1], [3, 4]],
+        "pieces": ["l4", "domino_v", "dot", "domino_v", "domino_v", "p5", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.47,
+        "reward": 22
+      },
+      {
+        "id": "level-24-truck-4",
+        "rows": 5,
+        "cols": 5,
+        "blocked": [[0, 1], [1, 2]],
+        "pieces": ["tri_i", "plus", "domino_v", "domino_v", "domino_v", "dot", "domino_h", "dot", "plus"],
+        "difficulty": "medium",
+        "difficultyScore": 0.6,
+        "reward": 27
+      },
+      {
+        "id": "level-24-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 1], [4, 1], [4, 5]],
+        "pieces": ["t4", "domino_h", "l4", "s4", "domino_v", "l4", "domino_h", "dot", "t4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.78,
+        "reward": 35
+      },
+      {
+        "id": "level-24-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[0, 3], [2, 1], [2, 3], [4, 6]],
+        "pieces": ["tri_l", "plus", "s4", "l4", "tri_l", "square", "dot", "domino_v", "p5"],
+        "difficulty": "hard",
+        "difficultyScore": 0.9,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-25",
+    "trucks": [
+      {
+        "id": "level-25-truck-1",
+        "rows": 2,
+        "cols": 4,
+        "blocked": [],
+        "pieces": ["domino_h", "tri_l", "dot", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.13,
+        "reward": 8
+      },
+      {
+        "id": "level-25-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[1, 1]],
+        "pieces": ["tri_i", "domino_h", "bar4", "domino_h", "dot", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.27,
+        "reward": 14
+      },
+      {
+        "id": "level-25-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[2, 0], [2, 3]],
+        "pieces": ["domino_h", "bar4", "t4", "tri_l", "domino_h", "dot", "domino_v"],
+        "difficulty": "medium",
+        "difficultyScore": 0.47,
+        "reward": 22
+      },
+      {
+        "id": "level-25-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[0, 1], [3, 3]],
+        "pieces": ["domino_v", "dot", "dot", "s4", "l4", "domino_h", "l4", "square"],
+        "difficulty": "medium",
+        "difficultyScore": 0.6,
+        "reward": 26
+      },
+      {
+        "id": "level-25-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 2], [1, 0], [1, 3]],
+        "pieces": ["domino_h", "dot", "t4", "p5", "domino_v", "s4", "tri_l", "tri_l", "tri_i"],
+        "difficulty": "hard",
+        "difficultyScore": 0.78,
+        "reward": 35
+      },
+      {
+        "id": "level-25-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[1, 4], [2, 6], [4, 0], [4, 4]],
+        "pieces": ["plus", "domino_h", "tri_i", "t4", "p5", "dot", "domino_h", "p5", "s4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.88,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-26",
+    "trucks": [
+      {
+        "id": "level-26-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[1, 1]],
+        "pieces": ["dot", "tri_i", "domino_v", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.12,
+        "reward": 9
+      },
+      {
+        "id": "level-26-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[1, 1]],
+        "pieces": ["dot", "bar4", "tri_l", "tri_i", "tri_i"],
+        "difficulty": "easy",
+        "difficultyScore": 0.28,
+        "reward": 14
+      },
+      {
+        "id": "level-26-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 0], [3, 2]],
+        "pieces": ["plus", "tri_l", "domino_v", "dot", "s4", "tri_i"],
+        "difficulty": "medium",
+        "difficultyScore": 0.48,
+        "reward": 22
+      },
+      {
+        "id": "level-26-truck-4",
+        "rows": 5,
+        "cols": 5,
+        "blocked": [[3, 0], [3, 1]],
+        "pieces": ["square", "domino_h", "domino_v", "domino_h", "domino_h", "t4", "tri_l", "l4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.61,
+        "reward": 27
+      },
+      {
+        "id": "level-26-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[2, 0], [4, 0], [4, 1]],
+        "pieces": ["tri_l", "dot", "tri_l", "domino_h", "plus", "domino_v", "tri_l", "t4", "square"],
+        "difficulty": "hard",
+        "difficultyScore": 0.79,
+        "reward": 35
+      },
+      {
+        "id": "level-26-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[1, 0], [2, 1], [4, 2], [4, 6]],
+        "pieces": ["tri_l", "l4", "dot", "tri_i", "t4", "p5", "domino_v", "p5", "l4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.9,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-27",
+    "trucks": [
+      {
+        "id": "level-27-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[1, 2]],
+        "pieces": ["dot", "domino_h", "bar4", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.13,
+        "reward": 9
+      },
+      {
+        "id": "level-27-truck-2",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[3, 0]],
+        "pieces": ["tri_i", "domino_v", "domino_v", "tri_i", "dot", "square"],
+        "difficulty": "easy",
+        "difficultyScore": 0.28,
+        "reward": 15
+      },
+      {
+        "id": "level-27-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 3], [2, 4]],
+        "pieces": ["p5", "domino_v", "tri_l", "dot", "s4", "tri_i"],
+        "difficulty": "medium",
+        "difficultyScore": 0.48,
+        "reward": 22
+      },
+      {
+        "id": "level-27-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[0, 3], [3, 4]],
+        "pieces": ["tri_l", "domino_v", "domino_h", "dot", "dot", "t4", "plus", "t4"],
+        "difficulty": "medium",
+        "difficultyScore": 0.62,
+        "reward": 26
+      },
+      {
+        "id": "level-27-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 2], [0, 3], [0, 5]],
+        "pieces": ["plus", "domino_h", "p5", "t4", "dot", "tri_l", "domino_v", "domino_v", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.79,
+        "reward": 35
+      },
+      {
+        "id": "level-27-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[1, 6], [3, 5], [4, 4], [4, 5]],
+        "pieces": ["p5", "p5", "domino_v", "domino_v", "tri_l", "square", "t4", "dot", "plus"],
+        "difficulty": "hard",
+        "difficultyScore": 0.88,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-28",
+    "trucks": [
+      {
+        "id": "level-28-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[1, 0]],
+        "pieces": ["domino_h", "bar4", "domino_v", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.13,
+        "reward": 9
+      },
+      {
+        "id": "level-28-truck-2",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[3, 0]],
+        "pieces": ["domino_v", "tri_i", "tri_i", "domino_h", "bar4", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.29,
+        "reward": 15
+      },
+      {
+        "id": "level-28-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[3, 1], [3, 3]],
+        "pieces": ["dot", "domino_v", "t4", "plus", "p5", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.49,
+        "reward": 22
+      },
+      {
+        "id": "level-28-truck-4",
+        "rows": 4,
+        "cols": 6,
+        "blocked": [[0, 5], [3, 4]],
+        "pieces": ["tri_l", "tri_l", "domino_v", "s4", "s4", "t4", "domino_h"],
+        "difficulty": "medium",
+        "difficultyScore": 0.62,
+        "reward": 26
+      },
+      {
+        "id": "level-28-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 5], [2, 2], [4, 1]],
+        "pieces": ["l4", "p5", "domino_v", "t4", "domino_h", "domino_v", "l4", "tri_l", "dot"],
+        "difficulty": "hard",
+        "difficultyScore": 0.79,
+        "reward": 35
+      },
+      {
+        "id": "level-28-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[0, 6], [1, 6], [2, 6], [4, 6]],
+        "pieces": ["tri_l", "l4", "domino_h", "t4", "plus", "tri_l", "tri_l", "t4", "tri_i"],
+        "difficulty": "hard",
+        "difficultyScore": 0.91,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-29",
+    "trucks": [
+      {
+        "id": "level-29-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[1, 0]],
+        "pieces": ["domino_h", "square", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.13,
+        "reward": 9
+      },
+      {
+        "id": "level-29-truck-2",
+        "rows": 4,
+        "cols": 4,
+        "blocked": [[2, 2]],
+        "pieces": ["dot", "square", "bar4", "tri_i", "dot", "domino_h"],
+        "difficulty": "easy",
+        "difficultyScore": 0.29,
+        "reward": 15
+      },
+      {
+        "id": "level-29-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[0, 0], [1, 3]],
+        "pieces": ["tri_l", "domino_h", "tri_i", "t4", "dot", "l4", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.5,
+        "reward": 22
+      },
+      {
+        "id": "level-29-truck-4",
+        "rows": 5,
+        "cols": 5,
+        "blocked": [[1, 0], [2, 2], [2, 4]],
+        "pieces": ["t4", "plus", "p5", "domino_h", "s4", "dot", "dot"],
+        "difficulty": "medium",
+        "difficultyScore": 0.63,
+        "reward": 26
+      },
+      {
+        "id": "level-29-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[1, 2], [3, 5], [4, 3]],
+        "pieces": ["t4", "l4", "domino_v", "tri_l", "tri_l", "dot", "t4", "domino_h", "t4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.8,
+        "reward": 35
+      },
+      {
+        "id": "level-29-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[2, 3], [3, 0], [4, 3], [4, 6]],
+        "pieces": ["dot", "domino_v", "p5", "p5", "t4", "l4", "domino_h", "l4", "s4"],
+        "difficulty": "hard",
+        "difficultyScore": 0.9,
+        "reward": 39
+      }
+    ]
+  },
+  {
+    "id": "level-30",
+    "trucks": [
+      {
+        "id": "level-30-truck-1",
+        "rows": 2,
+        "cols": 5,
+        "blocked": [[1, 4]],
+        "pieces": ["domino_v", "dot", "tri_i", "domino_h", "dot"],
+        "difficulty": "easy",
+        "difficultyScore": 0.15,
+        "reward": 9
+      },
+      {
+        "id": "level-30-truck-2",
+        "rows": 3,
+        "cols": 5,
+        "blocked": [[2, 0]],
+        "pieces": ["square", "domino_h", "dot", "dot", "domino_v", "domino_v", "domino_v"],
+        "difficulty": "easy",
+        "difficultyScore": 0.3,
+        "reward": 14
+      },
+      {
+        "id": "level-30-truck-3",
+        "rows": 4,
+        "cols": 5,
+        "blocked": [[1, 4], [3, 3]],
+        "pieces": ["tri_l", "dot", "tri_i", "dot", "plus", "domino_v", "tri_l"],
+        "difficulty": "medium",
+        "difficultyScore": 0.5,
+        "reward": 22
+      },
+      {
+        "id": "level-30-truck-4",
+        "rows": 5,
+        "cols": 5,
+        "blocked": [[1, 3], [3, 0], [4, 2]],
+        "pieces": ["domino_h", "domino_v", "t4", "dot", "t4", "dot", "domino_h", "s4", "domino_h"],
+        "difficulty": "medium",
+        "difficultyScore": 0.64,
+        "reward": 26
+      },
+      {
+        "id": "level-30-truck-5",
+        "rows": 5,
+        "cols": 6,
+        "blocked": [[0, 3], [4, 0], [4, 3]],
+        "pieces": ["l4", "p5", "s4", "domino_h", "tri_l", "dot", "l4", "domino_v", "domino_h"],
+        "difficulty": "hard",
+        "difficultyScore": 0.79,
+        "reward": 35
+      },
+      {
+        "id": "level-30-truck-6",
+        "rows": 5,
+        "cols": 7,
+        "blocked": [[0, 2], [4, 0], [4, 1], [4, 4]],
+        "pieces": ["p5", "dot", "s4", "s4", "plus", "tri_l", "domino_v", "t4", "tri_l"],
+        "difficulty": "hard",
+        "difficultyScore": 0.91,
+        "reward": 39
+      }
+    ]
   }
 ]

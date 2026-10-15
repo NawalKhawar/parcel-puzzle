@@ -50,8 +50,7 @@ export class Preloader extends Scene
         //  When all the assets have loaded, it's often worth creating global objects here that the rest of the game can use.
         //  For example, you can define global animations here, so we can use them in other scenes.
 
-        //  Skip the main menu entirely: the game should start immediately on the first
-        //  level once assets are loaded.
-        this.scene.start('PuzzleScene');
+        //  Assets are ready: show the title screen, whose Play button starts level 1.
+        this.scene.start('TitleScene');
     }
 }

@@ -3,9 +3,9 @@
  * screenshot.js
  *
  * Dev/QA helper: launches the Vite dev server, drives a headless Chromium (via
- * Playwright) through the game's boot sequence (Boot -> Preloader -> PuzzleScene,
- * which starts immediately with no main menu), and saves a screenshot. This is how UI
- * work under src/game/ gets
+ * Playwright) through the game's boot sequence (Boot -> Preloader -> TitleScene, then
+ * clicks Play -> PuzzleScene), and saves screenshots of the title screen and the first
+ * puzzle. This is how UI work under src/game/ gets
  * visually verified per CLAUDE.md's "test the feature in a browser before reporting
  * complete" rule — Phaser renders everything to a single <canvas>, so there's no DOM
  * to inspect or assert against; a screenshot (plus a console-error check) is the only
@@ -115,11 +115,22 @@ async function main() {
         await page.goto(URL);
         await page.waitForSelector('canvas');
 
-        // Boot -> Preloader -> PuzzleScene runs automatically with no user interaction
+        // Boot -> Preloader -> TitleScene runs automatically with no user interaction
         // needed. This fixed delay (rather than scene-aware polling) is acceptable for
-        // a manual verification helper, but worth revisiting if this becomes part of
-        // an automated test suite (Milestone 8) where flakiness would actually matter.
+        // a manual verification helper.
         await page.waitForTimeout(1000);
+
+        // Capture the title screen too (saved next to the main screenshot).
+        const titlePath = outPath.replace(/\.png$/, '-title.png');
+        await page.screenshot({ path: titlePath });
+        console.log(`Title screenshot saved to ${titlePath}`);
+
+        // Click the Play button. Phaser draws to a canvas, so there's no DOM button to
+        // target: instead click where TitleScene places it - horizontally centered, and
+        // 70/768 of the canvas height below its vertical center.
+        const box = await page.locator('canvas').boundingBox();
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height * (0.5 + 70 / 768));
+        await page.waitForTimeout(500);
 
         await page.screenshot({ path: outPath });
 

@@ -1,6 +1,6 @@
 # TRACKER — Current Progress
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 This file is the live checklist companion to `ROADMAP.md`. Update checkboxes and the
 "Current Status" section as work completes so we stay aligned on where things stand.
@@ -18,8 +18,17 @@ session added Milestone 8 (a `node --test` suite covering `src/core/` and the so
 text on WinScene, and a new ShiftCompleteScene showing final trucks-completed/
 total-earned totals once the last level is finished, with a button that starts a fresh
 shift). See Decision Log for both.
-**Next step:** Start Milestone 10 (Visual Polish & Audio) — the first milestone that
-touches the apartment/shop/FTUE meta-loop is explicitly still out of scope until then.
+**2026-10-15 — Game flow & content pass (outside the numbered milestones, requested
+directly):** the game now opens on a title screen (`TitleScene`, "Parcel Packing
+Puzzle" + a Play button) and ships 30 levels (days) / 160 trucks (puzzles) — level 1 has
+3 easy trucks, levels 2-7 have 4 (2 easy, 2 medium), levels 8-12 have 5 (+1 hard), levels 13-30 have 6 (2 hard).
+Each truck shows "Level N · Truck k/total"; the last truck of a day opens
+`DayCompleteScene` (trucks completed + earnings; Shop / Decorate / Next Day, where
+Shop and Decorate are blank placeholder screens with a Back button). The data is
+produced by the new `scripts/generate-levels.js`. 215 tests, `npm test`. See Decision
+Log.
+**Next step:** Start Milestone 10 (Visual Polish & Audio) — real shop/decorate content
+(the blank screens above) remains deferred until then.
 
 ## Open Design Decisions / Flags
 
@@ -415,3 +424,59 @@ touches the apartment/shop/FTUE meta-loop is explicitly still out of scope until
   resets the registry to 0 and restarts cleanly at `level-001`, `Truck 1 of 7`. Zero
   console errors throughout. All temporary diagnostic scripts and the
   `window.__PHASER_GAME__` hook were removed afterward — none of this is shipped.
+
+- 2026-10-15 — **Title screen, 30-day level set, and day-complete flow.** Requested
+  directly (not a numbered milestone). Decisions:
+  - **Vocabulary:** a *level* is now one in-game day; a *truck* is one packing puzzle
+    inside it. `levels.json` is `[{ id, trucks: [...] }]` (was a flat list of puzzles);
+    `loadLevel.js` gained `loadTruck`/`loadLevel`/`loadLevels` (+ `createGridForTruck`,
+    replacing `createGridForLevel`). Truck ids are unique across the whole game.
+    Schema in `src/data/levels.schema.md`.
+  - **Level plan:** 30 levels. L1 = 3 trucks, all easy. L2-7 = 4 trucks, easy -> medium
+    (last truck medium, none hard). L8-30 = 5 trucks, easy -> hard (last truck hard).
+    Both ends of each day's ramp also creep upward over the levels (see
+    `targetDifficulty()` in `scripts/generate-levels.js`), so the game gets harder within
+    a day and across days. `tests/data/levels.test.js` locks this spec in.
+  - **Levels are generated, not hand-written** (`node scripts/generate-levels.js`,
+    ~90s, seeded so output is reproducible): random boards + random polyomino tilings
+    (solvable by construction), every candidate re-checked by the real solver, then the
+    candidate whose difficulty score is closest to the slot's target is kept. Score
+    (0..1, stored as `difficultyScore`) = 40% board size + 20% irregular pieces +
+    15% blocked cells + 15% piece count + 10% solver effort; easy < 0.34 <= medium <
+    0.67 <= hard. Hard trucks also need <= 3 solutions, medium <= 5 (relaxed with a
+    printed warning for 4 hard trucks where that rule couldn't be met). Trucks inside a
+    day are sorted by score so difficulty never drops mid-day. Boards max out at
+    5x7 / 9 pieces so board + tray always fit the 1024x768 screen (verified by
+    screenshot at the hardest boards). The old 7 hand-made starter levels were retired.
+  - **Rewards** are now `openCells + {easy 0, medium 4, hard 8}` per truck.
+  - **Day totals** (`dayTrucksCompleted`, `dayEarned`) live in the Phaser registry and
+    reset whenever truck 0 of a level starts (`PuzzleScene.init`), so Play and Next Day
+    need no extra reset code. The HUD counter shows the day's running total.
+  - **Per-truck popup kept:** between trucks in a day `WinScene` still shows
+    ("Truck 2/4", +$ earned, today's total, Next Truck); only the day's last truck shows
+    `DayCompleteScene`. `ShiftCompleteScene` was removed (superseded).
+  - **DayCompleteScene** shows "Level N Complete!", trucks completed, earned today, and
+    Shop / Decorate / Next Day. Shop and Decorate open `ShopScene` / `DecorateScene`
+    (both tiny subclasses of `PlaceholderScreenScene`): an opaque blank screen with a
+    title and a Back button that restarts the popup with the same data.
+  - **Judgment call — after level 30** the third button reads "Finish" and returns to
+    the title screen (there's no level 31), with a "That's every level" line.
+  - Verified with Playwright: title -> Play (real click) -> level 1 truck 1 (first piece
+    really dragged) -> all 3 trucks -> popup ("Trucks completed: 3", "Earned today:
+    $26") -> Shop -> Back -> Decorate -> Back -> Next Day -> "Level 2 · Truck 1/4";
+    jumped to the hardest boards (L8 T5, L30 T4/T5) to check layout; finished L30 ->
+    Finish -> title. Zero console errors. Temporary hook/scripts removed afterward.
+
+- 2026-10-15 — **Follow-up fixes to the level plan and pay count.**
+  - **Pay count carries over between days.** New registry key `totalEarned` (all-time),
+    reset only by TitleScene's Play; the HUD shows it, WinScene shows "+$X earned ·
+    Total: $Y", and DayCompleteScene shows both "Earned today" and "Total earned". The
+    per-day keys (`dayTrucksCompleted`, `dayEarned`) still reset at each day's truck 1.
+  - **Level plan changed** (supersedes the easy -> medium/hard ramps above): L1 = 3 easy;
+    L2-7 = 4 trucks (2 easy, 2 medium); L8-12 = 5 trucks (2 easy, 2 medium, 1 hard);
+    L13-30 = 6 trucks (2 easy, 2 medium, 2 hard) - 160 trucks total. The plan now lives in
+    `labelsForLevel()` in `scripts/generate-levels.js`; each truck's target difficulty
+    comes from its label's band (trucks sharing a label are spread across the band, and
+    bands creep harder with level number). `tests/data/levels.test.js` checks the exact
+    label sequence per level. Regenerated; 215 tests pass. Three level-28/29/30 hard
+    trucks relax the "<= 3 solutions" rule (generator prints a warning).

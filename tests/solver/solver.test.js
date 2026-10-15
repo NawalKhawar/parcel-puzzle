@@ -1,12 +1,10 @@
 /**
  * solver.test.js
  *
- * Regression tests for scripts/solver.js: asserts that every currently-shipped level
- * in src/data/levels.json still solves with the expected solvability/uniqueness
- * outcome. These numbers were captured by running `node scripts/validate-levels.js`
- * against the current level set (see TRACKER.md's Milestone 8 decision log entry) —
- * if a future change to Shape.js, Placement.js, Grid.js, or levels.json alters how
- * many ways a level can be solved, this is the test that should catch it.
+ * Regression tests for scripts/solver.js: asserts that every truck (puzzle) of every
+ * level in src/data/levels.json is still solvable - if a future change to Shape.js,
+ * Placement.js, Grid.js, or levels.json breaks a puzzle, this is the test that should
+ * catch it.
  *
  * Also includes a couple of hand-built micro-levels with known, easy-to-reason-about
  * solution counts, so a regression in the solver itself (not just a levels.json change)
@@ -17,7 +15,7 @@ import assert from 'node:assert/strict';
 
 import { Grid } from '../../src/core/Grid.js';
 import { solve } from '../../scripts/solver.js';
-import { loadLevels, createGridForLevel } from '../../src/data/loadLevel.js';
+import { loadLevels, createGridForTruck } from '../../src/data/loadLevel.js';
 import levelsRaw from '../../src/data/levels.json' with { type: 'json' };
 
 describe('solver.js — hand-built micro-levels', () => {
@@ -65,34 +63,18 @@ describe('solver.js — hand-built micro-levels', () => {
 describe('solver.js — shipped levels.json regression', () => {
     const levels = loadLevels(levelsRaw);
 
-    // Expected outcomes captured from `node scripts/validate-levels.js` against the
-    // current level set. A level moving from 'unique' to 'multiple' (or vice versa),
-    // or from solvable to unsolvable, means something in the engine or the level data
-    // itself changed — update this table deliberately if that change was intentional.
-    const expected = {
-        'level-001': 'unique',
-        'level-002': 'unique',
-        'level-003': 'unique',
-        'level-004': 'unique',
-        'level-005': 'unique',
-        'level-006': 'multiple',
-        'level-007': 'multiple',
-    };
-
+    // Every truck (puzzle) in every level must be solvable. The generator guarantees this
+    // by construction, but this is the safety net if levels.json is ever hand-edited or
+    // the engine's placement rules change. (Uniqueness is deliberately NOT pinned per
+    // truck any more: with 142 generated puzzles, that table would be noise - the
+    // difficulty ramp is covered in tests/data/levels.test.js instead.)
     for (const level of levels) {
-        test(`${level.id} is solvable and matches its expected uniqueness`, () => {
-            const grid = createGridForLevel(level);
-            const result = solve(grid, level.pieces);
-
-            assert.ok(result.solutionCount >= 1, `${level.id} must have at least one solution`);
-
-            const actual = result.solutionCount === 1 && result.solutionCountIsExact ? 'unique' : 'multiple';
-            assert.equal(actual, expected[level.id], `${level.id}'s solvability profile changed unexpectedly`);
-        });
+        for (const truck of level.trucks) {
+            test(`${truck.id} is solvable`, () => {
+                const grid = createGridForTruck(truck);
+                const result = solve(grid, truck.pieces, { maxSolutions: 1 });
+                assert.ok(result.solutionCount >= 1, `${truck.id} must have at least one solution`);
+            });
+        }
     }
-
-    test('every shipped level is accounted for in the expected-outcomes table above', () => {
-        const levelIds = levels.map((level) => level.id);
-        assert.deepEqual(Object.keys(expected).sort(), [...levelIds].sort());
-    });
 });

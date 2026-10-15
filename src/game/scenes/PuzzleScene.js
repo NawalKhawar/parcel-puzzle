@@ -1,6 +1,6 @@
 import { Scene } from 'phaser';
 
-import { loadLevels, createGridForLevel } from '../../data/loadLevel.js';
+import { loadLevels, createGridForTruck } from '../../data/loadLevel.js';
 import { getShapeBounds } from '../../core/Shape.js';
 import levelsRaw from '../../data/levels.json';
 import { GridView } from '../objects/GridView.js';
@@ -11,9 +11,10 @@ import { UI_SCALE } from '../uiScale.js';
 /**
  * PuzzleScene.js
  *
- * The core gameplay scene: loads a level (via src/data/loadLevel.js, which validates
- * it against the schema in src/data/levels.schema.md), renders its grid with a
- * GridView, and renders its unplaced pieces as a row of PieceViews below the board.
+ * The core gameplay scene: loads one truck (puzzle) of one level (day) via
+ * src/data/loadLevel.js, which validates it against the schema in
+ * src/data/levels.schema.md, renders its grid with a GridView, and renders its unplaced
+ * pieces as a row of PieceViews below the board.
  *
  * As of Milestone 5, this scene also owns the drag-and-drop/snap gameplay loop: it
  * listens for Phaser's scene-wide 'drag'/'dragend' events (every PieceView makes
@@ -29,11 +30,11 @@ import { UI_SCALE } from '../uiScale.js';
  *
  * As of Milestone 6, this scene also owns win detection and level progression: every
  * successful placement checks src/core/Grid.isComplete(), and on the first placement
- * that completes the board, this scene pauses itself and launches WinScene on top
- * (handleWin()). WinScene's "Next Level" button starts a brand-new PuzzleScene
- * instance at the next levelIndex (passed via Phaser's scene data, read in init()) —
- * a full restart rather than mutating this instance in place, so the next level always
- * begins from a clean Grid with no leftover placements.
+ * that completes the board, this scene pauses itself and launches an overlay on top
+ * (handleWin()). The overlay's button starts a brand-new PuzzleScene instance at the
+ * next truck (passed via Phaser's scene data, read in init()) — a full restart rather
+ * than mutating this instance in place, so every truck begins from a clean Grid with
+ * no leftover placements.
  *
  * As of Milestone 7, this scene also owns Undo/Reset/Pause (see the concept art
  * reference in docs/game_concept.pdf, which shows these as the board's basic controls).
@@ -44,15 +45,17 @@ import { UI_SCALE } from '../uiScale.js';
  * since it lives in this same scene) — instead it shows an overlay and disables
  * dragging on every not-yet-placed piece directly.
  *
- * As of Milestone 9, every level in levels.json is treated as one "truck" in a single
- * "shift" (per docs/game_concept.pdf's Daily Loop/"Shift Complete!" art reference):
- * completing a level earns its `reward` in coins, added to a running shift total kept
- * in Phaser's cross-scene Data Manager (`this.registry`, under 'shiftTrucksCompleted'/
- * 'shiftTotalEarned') so it survives the "stop this scene, start a fresh one for the
- * next level" restart pattern WinScene already used. A coin HUD shows that running
- * total (see createHud()); completing the shift's last level routes to
- * ShiftCompleteScene instead of WinScene (see handleWin()), which shows the final
- * totals and starts a brand-new shift (resetting the registry counters) on its button.
+ * Game structure (see docs/game_concept.pdf's Daily Loop): the game is a list of LEVELS
+ * (each one in-game day), and each level holds several TRUCKS (one packing puzzle
+ * each). This scene is started with { levelIndex, truckIndex } and plays that one truck.
+ * Completing a truck earns its `reward` in coins, added to running totals kept in
+ * Phaser's cross-scene Data Manager (`this.registry`) so they survive the "stop this
+ * scene, start a fresh one for the next truck" restart pattern: 'dayTrucksCompleted' /
+ * 'dayEarned' (reset whenever truck 0 of a level begins - see init()) and 'totalEarned',
+ * the all-time pay count, which is NOT reset between days (only TitleScene's Play
+ * resets it). The coin HUD shows that all-time total (createHud()); finishing a truck
+ * that isn't the day's last shows WinScene, while the day's last truck shows
+ * DayCompleteScene (see handleWin()), which offers Shop / Decorate / Next Day.
  */
 
 /** A single cell size is used for both the board and the tray so a piece doesn't change
@@ -82,8 +85,8 @@ const HUD_BUTTON_STYLE = {
     padding: { x: 12 * UI_SCALE, y: 8 * UI_SCALE },
 };
 
-/** Coins awarded for completing a level whose data doesn't set its own `reward` (see
- *  levels.schema.md) — every level actually shipped in levels.json sets one explicitly,
+/** Coins awarded for completing a truck whose data doesn't set its own `reward` (see
+ *  levels.schema.md) — every truck actually shipped in levels.json sets one explicitly,
  *  so this is purely a safety net for hand-edited/future level data that omits it. */
 const DEFAULT_REWARD = 10;
 
@@ -96,15 +99,25 @@ export class PuzzleScene extends Scene
 
     /**
      * Phaser calls init(data) before create(), with whatever data object was passed to
-     * scene.start()/scene.launch() — WinScene's "Next Level" button passes
-     * { levelIndex } here to pick up where the player left off. Defaults to the first
-     * level when started with no data (e.g. the very first time, straight from Preloader).
+     * scene.start()/scene.launch() — TitleScene's Play button, WinScene's "Next Truck"
+     * button and DayCompleteScene's "Next Day" button all pass { levelIndex, truckIndex }
+     * here to say which truck to play. Defaults to level 1, truck 1 if started with no data.
      *
-     * @param {{ levelIndex?: number }} [data]
+     * @param {{ levelIndex?: number, truckIndex?: number }} [data]
      */
     init (data)
     {
         this.levelIndex = data && typeof data.levelIndex === 'number' ? data.levelIndex : 0;
+        this.truckIndex = data && typeof data.truckIndex === 'number' ? data.truckIndex : 0;
+
+        // A day always begins at its first truck, so that's the one moment the day's
+        // running totals start over (covers Play from the title screen and Next Day alike).
+        if (this.truckIndex === 0)
+        {
+            this.registry.set('dayTrucksCompleted', 0);
+            this.registry.set('dayEarned', 0);
+        }
+
         this.hasWon = false;
         this.isPaused = false;
         this.history = new PlacementHistory();
@@ -119,23 +132,24 @@ export class PuzzleScene extends Scene
         // loadLevels throws loudly on any schema violation, so a broken levels.json
         // fails fast and visibly here rather than producing a silently-wrong board.
         this.levels = loadLevels(levelsRaw);
-        const level = this.levels[this.levelIndex];
+        this.levelData = this.levels[this.levelIndex];
+        const truck = this.levelData.trucks[this.truckIndex];
 
-        this.level = level;
-        this.grid = createGridForLevel(level);
+        this.truck = truck;
+        this.grid = createGridForTruck(truck);
 
-        const boardPixelWidth = level.cols * CELL_SIZE;
+        const boardPixelWidth = truck.cols * CELL_SIZE;
         const boardX = (this.scale.width - boardPixelWidth) / 2;
         const boardY = 56 * UI_SCALE;
 
         this.gridView = new GridView(this, boardX, boardY, this.grid, CELL_SIZE);
 
-        // "Truck N of <shift size>" framing per docs/game_concept.pdf's art reference
-        // (the truck itself is labeled "TRUCK 03" there) — levels.json's own array
-        // order/length is what defines the shift, so this stays correct automatically
-        // as levels are added/removed, no separate "shift size" constant to keep in sync.
+        // "Level N · Truck k/total" header. The truck total is read from the level's own
+        // truck list, so it stays correct automatically as levels are edited (no separate
+        // constant to keep in sync). Difficulty is shown too, which makes the ramp visible.
+        const trucksTotal = this.levelData.trucks.length;
         this.add
-            .text(this.scale.width / 2, 24 * UI_SCALE, `Truck ${this.levelIndex + 1} of ${this.levels.length}  ·  ${level.id}  ·  ${level.difficulty ?? ''}`, {
+            .text(this.scale.width / 2, 24 * UI_SCALE, `Level ${this.levelIndex + 1}  ·  Truck ${this.truckIndex + 1}/${trucksTotal}  ·  ${truck.difficulty ?? ''}`, {
                 fontFamily: 'Arial',
                 fontSize: 20 * UI_SCALE,
                 color: '#3a362f',
@@ -186,7 +200,7 @@ export class PuzzleScene extends Scene
         let cursorY = trayStartY;
         let rowHeight = 0;
 
-        this.level.pieces.forEach((shapeId, index) => {
+        this.truck.pieces.forEach((shapeId, index) => {
             const pieceView = new PieceView(this, cursorX, cursorY, shapeId, CELL_SIZE, `tray-${index}`);
             pieceView.setTrayScale(trayScale);
 
@@ -232,7 +246,7 @@ export class PuzzleScene extends Scene
         let rowHeight = 0;
         let totalHeight = 0;
 
-        this.level.pieces.forEach((shapeId) => {
+        this.truck.pieces.forEach((shapeId) => {
             const bounds = getShapeBounds(shapeId);
             const width = bounds.cols * CELL_SIZE * scale;
             const height = bounds.rows * CELL_SIZE * scale;
@@ -261,13 +275,11 @@ export class PuzzleScene extends Scene
      */
     createHud ()
     {
-        // Reads the running shift total from the registry (see the class doc) rather
+        // Reads the all-time pay count from the registry (see the class doc) rather
         // than tracking its own copy, so it's always correct immediately on a fresh
-        // PuzzleScene instance — including the very first truck of a shift, where it
-        // reads back the 0 that ShiftCompleteScene's "Back to Home" button just reset
-        // it to (or Phaser's own default of `undefined` on the very first load ever,
-        // handled by the `?? 0` fallback the same way handleWin() does).
-        const totalEarned = this.registry.get('shiftTotalEarned') ?? 0;
+        // PuzzleScene instance, and carries over from day to day (the `?? 0` is a
+        // safety net for an unset registry key).
+        const totalEarned = this.registry.get('totalEarned') ?? 0;
         this.coinText = this.add.text(16 * UI_SCALE, 16 * UI_SCALE, `$${totalEarned}`, {
             fontFamily: 'Arial Black',
             fontSize: 18 * UI_SCALE,
@@ -501,39 +513,50 @@ export class PuzzleScene extends Scene
     /**
      * Called once, the moment the board's last open cell is filled. Pauses this scene
      * (so the completed board can't be interacted with further — no more dragging
-     * pieces that are, in any case, already all placed), credits this level's reward
-     * to the running shift totals kept in the registry (see the class doc), and routes
-     * to whichever overlay fits: WinScene for an ordinary level (its button starts the
-     * next one), or — once the last level in levels.json is reached — straight to
-     * ShiftCompleteScene with the shift's final totals, skipping WinScene entirely
-     * (there's no "next truck" to offer once the shift itself is done). There's no
-     * persistent "game complete" state beyond a single shift yet — starting a new one
-     * is meta-loop/progression work, out of scope for now per ROADMAP.md's
-     * "Future / Not Yet Scheduled" (the apartment/shop step of the Daily Loop).
+     * pieces that are, in any case, already all placed), credits this truck's reward
+     * to the day's running totals kept in the registry (see the class doc), and routes
+     * to whichever overlay fits: WinScene if another truck follows today (its button
+     * starts that truck), or — after the day's last truck — DayCompleteScene with the
+     * day's totals (trucks completed + coins earned) and its Shop/Decorate/Next Day
+     * buttons.
      */
     handleWin ()
     {
-        const reward = this.level.reward ?? DEFAULT_REWARD;
-        const trucksCompleted = (this.registry.get('shiftTrucksCompleted') ?? 0) + 1;
-        const totalEarned = (this.registry.get('shiftTotalEarned') ?? 0) + reward;
-        this.registry.set('shiftTrucksCompleted', trucksCompleted);
-        this.registry.set('shiftTotalEarned', totalEarned);
+        const reward = this.truck.reward ?? DEFAULT_REWARD;
+        const trucksCompleted = (this.registry.get('dayTrucksCompleted') ?? 0) + 1;
+        const dayEarned = (this.registry.get('dayEarned') ?? 0) + reward;
+        this.registry.set('dayTrucksCompleted', trucksCompleted);
+        this.registry.set('dayEarned', dayEarned);
+        const totalEarned = (this.registry.get('totalEarned') ?? 0) + reward;
+        this.registry.set('totalEarned', totalEarned);
 
-        const isLastLevel = this.levelIndex === this.levels.length - 1;
+        // Keep the HUD counter (visible dimmed behind the overlay) in step with the popup.
+        this.coinText.setText(`$${totalEarned}`);
+
+        const trucksTotal = this.levelData.trucks.length;
+        const isLastTruck = this.truckIndex === trucksTotal - 1;
 
         this.scene.pause();
 
-        if (isLastLevel)
+        if (isLastTruck)
         {
-            this.scene.launch('ShiftCompleteScene', { trucksCompleted, totalEarned });
+            this.scene.launch('DayCompleteScene', {
+                levelIndex: this.levelIndex,
+                trucksCompleted,
+                earned: dayEarned,
+                totalEarned,
+                isLastLevel: this.levelIndex === this.levels.length - 1,
+            });
         }
         else
         {
             this.scene.launch('WinScene', {
-                levelId: this.level.id,
+                truckNumber: this.truckIndex + 1,
+                trucksTotal,
                 reward,
                 totalEarned,
-                nextLevelIndex: this.levelIndex + 1,
+                levelIndex: this.levelIndex,
+                nextTruckIndex: this.truckIndex + 1,
             });
         }
     }

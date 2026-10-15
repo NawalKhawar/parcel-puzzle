@@ -4,7 +4,10 @@ import { GameOver } from './scenes/GameOver';
 import { Preloader } from './scenes/Preloader';
 import { PuzzleScene } from './scenes/PuzzleScene';
 import { WinScene } from './scenes/WinScene';
-import { ShiftCompleteScene } from './scenes/ShiftCompleteScene';
+import { TitleScene } from './scenes/TitleScene';
+import { DayCompleteScene } from './scenes/DayCompleteScene';
+import { ShopScene } from './scenes/ShopScene';
+import { DecorateScene } from './scenes/DecorateScene';
 import { UI_SCALE } from './uiScale.js';
 import { AUTO, Game, Scale } from 'phaser';
 
@@ -28,9 +31,12 @@ const config = {
     scene: [
         Boot,
         Preloader,
+        TitleScene,
         PuzzleScene,
         WinScene,
-        ShiftCompleteScene,
+        DayCompleteScene,
+        ShopScene,
+        DecorateScene,
         MainGame,
         GameOver
     ]

@@ -53,8 +53,8 @@ Planning documents, read in this order when picking up work:
 Phaser renders everything to a single `<canvas>` — there's no DOM to inspect or assert
 against, so "it builds" is not evidence a scene looks right. Before reporting any
 `src/game/` change as done, run `node scripts/screenshot.js` (launches the dev server,
-drives headless Chromium via Playwright through Boot -> Preloader -> MainMenu -> click
--> PuzzleScene, saves a screenshot, and reports any console errors) and actually look
+drives headless Chromium via Playwright through Boot -> Preloader -> TitleScene -> click
+Play -> PuzzleScene, saves screenshots, and reports any console errors) and actually look
 at the resulting image. `@playwright/test` + a Chromium binary are installed as dev
 dependencies specifically for this.
 

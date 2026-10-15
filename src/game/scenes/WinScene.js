@@ -4,19 +4,16 @@ import { UI_SCALE } from '../uiScale.js';
 /**
  * WinScene.js
  *
- * A small overlay scene shown when a level ("truck") is completed. PuzzleScene
- * launches this on top of itself (via `this.scene.launch('WinScene', data)`) rather
- * than replacing itself, so the just-completed board stays visible, dimmed, behind the
- * overlay — PuzzleScene is paused for the duration (see PuzzleScene.handleWin) so the
- * board can't be interacted with while this is up.
+ * A small overlay scene shown when a truck (puzzle) is completed - but NOT the last
+ * truck of the day, which goes to DayCompleteScene instead (see PuzzleScene.handleWin).
+ * PuzzleScene launches this on top of itself (via `this.scene.launch('WinScene', data)`)
+ * rather than replacing itself, so the just-completed board stays visible, dimmed,
+ * behind the overlay - PuzzleScene is paused for the duration so the board can't be
+ * interacted with while this is up.
  *
- * As of Milestone 9, this also reports the coins just earned and the running shift
- * total (see docs/game_concept.pdf's "Shift Complete!" art reference, which this
- * mirrors at the single-truck scale) — it still holds no puzzle-rule logic of its own,
- * and is only ever shown for a level that *isn't* the last one in the shift: reaching
- * the final level routes straight to ShiftCompleteScene instead (see
- * PuzzleScene.handleWin), so this scene no longer needs to know anything about
- * wraparound or "last level" — its button always means "next truck".
+ * It reports which truck was just finished ("Truck 2/4"), the coins that truck earned,
+ * and the all-time pay count. It holds no puzzle-rule logic of its own, and since it is
+ * only shown when another truck follows, its button always means "next truck".
  */
 export class WinScene extends Scene
 {
@@ -27,11 +24,12 @@ export class WinScene extends Scene
 
     /**
      * @param {Object} data
-     * @param {string} data.levelId - the level just completed, for display.
-     * @param {number} data.reward - coins earned for this one level/truck.
-     * @param {number} data.totalEarned - running shift total after this reward.
-     * @param {number} data.nextLevelIndex - the levels.json index PuzzleScene should
-     *   restart at when the button is pressed.
+     * @param {number} data.truckNumber - 1-based number of the truck just completed.
+     * @param {number} data.trucksTotal - how many trucks the current level has.
+     * @param {number} data.reward - coins earned for this one truck.
+     * @param {number} data.totalEarned - all-time running pay count after this reward.
+     * @param {number} data.levelIndex - 0-based level (day) index, passed back to PuzzleScene.
+     * @param {number} data.nextTruckIndex - 0-based index of the truck to start next.
      */
     create (data)
     {
@@ -54,7 +52,7 @@ export class WinScene extends Scene
             .setOrigin(0.5);
 
         this.add
-            .text(centerX, centerY - 30 * UI_SCALE, data.levelId, {
+            .text(centerX, centerY - 30 * UI_SCALE, `Truck ${data.truckNumber}/${data.trucksTotal}`, {
                 fontFamily: 'Arial',
                 fontSize: 20 * UI_SCALE,
                 color: '#ffffff',
@@ -85,11 +83,11 @@ export class WinScene extends Scene
         button.on('pointerdown', () => {
             // Stop both scenes explicitly (rather than relying on start() to implicitly
             // tear down whatever called it) before starting a fresh PuzzleScene, so the
-            // next level gets a brand-new Scene instance — a clean Grid and new
-            // PieceViews, not state left over from the just-completed level.
+            // next truck gets a brand-new Scene instance - a clean Grid and new
+            // PieceViews, not state left over from the just-completed truck.
             this.scene.stop('PuzzleScene');
             this.scene.stop('WinScene');
-            this.scene.start('PuzzleScene', { levelIndex: data.nextLevelIndex });
+            this.scene.start('PuzzleScene', { levelIndex: data.levelIndex, truckIndex: data.nextTruckIndex });
         });
     }
 }
