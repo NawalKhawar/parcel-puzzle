@@ -215,6 +215,96 @@ tracked separately once the puzzle core is approved).
 
 ---
 
+## Milestones 9.1 - 9.6 — Additions Requested After Milestone 9
+These were requested directly after Milestone 9 was finished, so they sit between
+Milestone 9 and Milestone 10 rather than being renumbered. All six are **done**; their
+detailed decisions are in `TRACKER.md`'s Decision Log. Together they turn the single
+"shift" of Milestone 9 into the real game structure: **30 levels (days), each made of
+several trucks (puzzles)**, with a title screen at the front and a shop/apartment at the
+back of each day.
+
+### Milestone 9.1 — Title Screen, Day Flow & Persistent Pay (done)
+**Goal:** The game opens on a title screen and plays as a sequence of days.
+
+**Deliverables:**
+- `TitleScene` ("Parcel Packing Puzzle" + a Play button that starts level 1, truck 1).
+- Each truck's header reads "Level N · Truck k/total".
+- Between trucks, `WinScene` shows the reward and the pay count; after a day's last truck,
+  `DayCompleteScene` shows trucks completed + earnings with **Shop / Decorate / Next Day**
+  (Next Day becomes **Finish** after level 30, returning to the title).
+- The pay count carries over between days (it only resets on a new game).
+
+**DoD:** Play -> every truck of a level -> day popup -> Next Day starts the next level,
+with the coin total never resetting between days.
+
+### Milestone 9.2 — 30 Levels, Generated (done)
+**Goal:** Enough content, with a smooth difficulty ramp, without hand-authoring each puzzle.
+
+**Deliverables:**
+- `levels.json` restructured to levels (days) -> trucks (puzzles); `loadLevel.js` and
+  `levels.schema.md` updated; `reward`, `difficulty` and `difficultyScore` per truck.
+- `scripts/generate-levels.js`: seeded, solver-verified generator and difficulty scorer.
+  Plan: level 1 = 3 easy trucks; levels 2-7 = 4 (2 easy, 2 medium); levels 8-12 = 5
+  (2 easy, 2 medium, 1 hard); levels 13-30 = 6 (2 easy, 2 medium, 2 hard).
+- `tests/data/levels.test.js` locks the plan in; `validate-levels.js` checks every truck.
+
+**DoD:** `node scripts/validate-levels.js` reports all 160 trucks solvable and `npm test`
+confirms the exact easy/medium/hard order of every level.
+
+### Milestone 9.3 — Portrait / Square Boards (done)
+**Goal:** Boards are square or portrait because they will represent the open back of a
+mail truck.
+
+**Deliverables:**
+- Generator limited to portrait/square sizes (2-7 rows x 2-5 cols); levels regenerated.
+- `PuzzleScene` sizes cells per truck so tall boards still leave room for the tray.
+- A test that fails if any shipped board is landscape.
+
+**DoD:** Every truck has rows >= cols and the tallest boards (7 rows) fit on screen with
+their tray.
+
+### Milestone 9.4 — Hint Button (done)
+**Goal:** A once-per-truck hint, available from level 2 onwards.
+
+**Deliverables:**
+- Hint button in the HUD (hidden on level 1); faded and disabled after use.
+- Pressing it **highlights**, with a pulsing gold overlay, the cells where one piece
+  belongs. It never places, moves or removes anything: if the player's placements are a
+  dead end the highlight can sit over their wrong pieces. The highlight stays until the
+  right piece is placed there (and returns if that piece is undone).
+- The solver moved to `src/core/Solver.js` (the game now uses it at runtime) with a
+  `findHint` helper; tests cover it.
+
+**DoD:** On level 2+, one press highlights a spot; placing the right piece by dragging
+removes the highlight; the button stays faded for the rest of that truck.
+
+### Milestone 9.5 — Shop UI (done, placeholder content)
+**Goal:** The basic shop screen.
+
+**Deliverables:**
+- `ShopScene` with three horizontal tabs (Clothes, Accessories, Decor), each showing
+  labelled placeholder boxes; content comes from `src/data/shop.json`.
+
+**DoD:** Shop opens from the day popup, all three tabs switch, Back returns to the popup.
+Nothing can be bought yet (see Future).
+
+### Milestone 9.6 — Apartment UI (done, placeholder content)
+**Goal:** The apartment where furniture is placed on a grid, in a 2.5D room.
+
+**Deliverables:**
+- `ApartmentScene` (the popup's Decorate button): flat back wall, angled floor/side walls,
+  grid-based placement, an inventory of placeholder furniture of different sizes.
+- Dragging shows a ghost (green = legal, red = not); letting go places the item; placed
+  items can be picked up again or dragged back to the inventory; layout is remembered.
+- Pure, unit-tested logic in `src/core/RoomProjection.js` (exactly invertible 2.5D
+  mapping + box polygons) and `src/core/RoomGrid.js` (placement rules, back-to-front draw
+  order so nearer items cover farther ones); data in `src/data/apartment.json`.
+
+**DoD:** Items can be dragged in, placed, moved, overlapped correctly front-to-back,
+rejected when illegal, and returned to the inventory.
+
+---
+
 ## Milestone 10 — Visual Polish & Audio
 **Goal:** Replace placeholder rectangles with real art/animation and add sound,
 once the core loop (Milestones 1–9) is validated and stable.
@@ -232,7 +322,9 @@ once the core loop (Milestones 1–9) is validated and stable.
 
 ## Future / Not Yet Scheduled
 Explicitly deferred until the puzzle core above is approved and stable:
-- Apartment decoration system and shop.
+- Shop purchasing and spending coins; equipping clothes/accessories on a character; the
+  apartment's real furniture/decor items (the UI and placement exist - see 9.5 / 9.6 - but
+  with placeholder content only).
 - Narrative FTUE panels (graduation → moving → job → apartment).
 - Monetization (rewarded hint ads, interstitials).
 - Progression/difficulty curve tuning across many workdays.

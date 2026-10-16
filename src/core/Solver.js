@@ -27,6 +27,7 @@
  */
 
 import { getShapeCells, getShapeCellCount } from './Shape.js';
+import { Grid } from './Grid.js';
 
 /**
  * @typedef {import('./Grid.js').Grid} Grid
@@ -179,34 +180,65 @@ export function solve(grid, pieces, options = {}) {
 }
 
 /**
- * Picks one piece to give away as a hint: solves the board from its CURRENT state (any
- * pieces already on the grid stay where they are) and returns where one of the
- * still-unplaced pieces belongs in a complete solution.
+ * Works out where one piece belongs, for the Hint button. The hint is only INFORMATION:
+ * it never moves or removes anything the player has placed - the caller just highlights
+ * the returned area on the board, even where the player has already put other pieces.
  *
- * The largest remaining piece is chosen, since placing a big piece gives the player the
- * most information (a lone 1-cell piece would barely help).
+ * It picks the largest piece worth pointing at (a big piece tells the player the most),
+ * using the best solution it can find:
+ *   1. If the player's current placements can still be completed to a full solution, it
+ *      solves from that state and points at one of the pieces they have NOT placed yet.
+ *      (The highlighted cells are free, and agree with everything on the board.)
+ *   2. If their placements are a dead end, it solves the board from scratch and points at
+ *      the largest piece of that solution that is not already sitting in the right place.
+ *      The highlighted cells may then overlap the player's wrong pieces - that is the nudge.
  *
  * @param {Grid} grid - the current board, with the player's placements on it.
- * @param {string[]} remainingPieces - shape ids of the pieces not yet placed.
- * @returns {{shapeId: string, row: number, col: number} | null} where to put one piece,
- *   or null if the board can't be completed from its current state (i.e. the player's
- *   existing placements are a dead end) - the caller decides how to recover, e.g. by
- *   clearing the board and asking again.
+ * @param {string[]} allPieces - shape ids of EVERY piece in the puzzle (placed or not).
+ * @returns {{shapeId: string, row: number, col: number} | null} the shape and its origin
+ *   in a solution, or null if there is nothing left to point at (e.g. the board is solved).
  */
-export function findHint(grid, remainingPieces) {
-    if (remainingPieces.length === 0) {
+export function findHint(grid, allPieces) {
+    const largestFirst = (placements) =>
+        [...placements].sort((a, b) => getShapeCellCount(b.shapeId) - getShapeCellCount(a.shapeId));
+
+    // Which pieces are still unplaced: every piece minus the ones already on the grid
+    // (counted per shape id, since identical pieces are interchangeable).
+    const remaining = [...allPieces];
+    for (const placement of grid.placements.values()) {
+        const index = remaining.indexOf(placement.shapeId);
+        if (index >= 0) {
+            remaining.splice(index, 1);
+        }
+    }
+    if (remaining.length === 0) {
         return null;
     }
 
-    const result = solve(grid, remainingPieces, { maxSolutions: 1, maxNodes: 200000 });
-    if (result.solutionCount === 0) {
+    // Case 1: the player's placements are still part of some full solution.
+    const fromHere = solve(grid, remaining, { maxSolutions: 1, maxNodes: 200000 });
+    if (fromHere.solutionCount > 0) {
+        const best = largestFirst(Object.values(fromHere.solutions[0]))[0];
+        return { shapeId: best.shapeId, row: best.originRow, col: best.originCol };
+    }
+
+    // Case 2: dead end. Solve an empty copy of the same board instead (same size, same
+    // blocked cells, none of the player's pieces).
+    const blocked = [...grid.blockedCellKeys].map((key) => key.split(',').map(Number));
+    const emptyBoard = new Grid(grid.rows, grid.cols, blocked);
+    const fromScratch = solve(emptyBoard, allPieces, { maxSolutions: 1, maxNodes: 200000 });
+    if (fromScratch.solutionCount === 0) {
         return null;
     }
 
-    // Order the solution's placements largest-first and take the first one.
-    const placements = Object.values(result.solutions[0]).sort(
-        (a, b) => getShapeCellCount(b.shapeId) - getShapeCellCount(a.shapeId)
-    );
-    const best = placements[0];
-    return { shapeId: best.shapeId, row: best.originRow, col: best.originCol };
+    // Skip any solution piece the player already has in exactly the right place.
+    const alreadyCorrect = (candidate) =>
+        [...grid.placements.values()].some(
+            (placed) =>
+                placed.shapeId === candidate.shapeId &&
+                placed.originRow === candidate.originRow &&
+                placed.originCol === candidate.originCol
+        );
+    const target = largestFirst(Object.values(fromScratch.solutions[0])).find((candidate) => !alreadyCorrect(candidate));
+    return target ? { shapeId: target.shapeId, row: target.originRow, col: target.originCol } : null;
 }

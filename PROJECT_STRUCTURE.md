@@ -25,8 +25,9 @@ parcel-puzzle/
 │   │   ├── Shape.js            Polyomino shape definitions (relative cell coordinates) and
 │   │   │                       the canonical shape vocabulary (dot, domino_h, l4, p5, etc).
 │   │   ├── Solver.js           Backtracking exact-cover solver: solve() counts/finds
-│   │   │                       solutions; findHint() picks one piece's correct spot for
-│   │   │                       the in-game Hint button. Used by scripts/ and the game.
+│   │   │                       solutions; findHint() works out where one piece belongs for
+│   │   │                       the in-game Hint button (a highlight only). Used by scripts/
+│   │   │                       and the game.
 │   │   ├── Grid.js             Board model: dimensions, blocked cells, filled cells;
 │   │   │                       canPlace/place/remove/isComplete.
 │   │   ├── Placement.js        Pure helpers: translate a shape to board coords, check
@@ -96,7 +97,8 @@ parcel-puzzle/
 │   │   └── objects/
 │   │       ├── GridView.js     Draws a Grid (core/Grid.js) as cells on screen; open vs.
 │   │       │                   blocked cell styling; also owns ghost/snap-preview
-│   │       │                   rendering for a piece being dragged.
+│   │       │                   rendering for a piece being dragged and the pulsing
+│   │       │                   hint highlight (showHint/clearHint).
 │   │       ├── FurnitureView.js  Draws one piece of furniture as a placeholder 3D box
 │   │       │                   (faces from core/RoomProjection.js) plus a name label.
 │   │       ├── PieceView.js    Draws a single piece as its true polyomino shape; owns

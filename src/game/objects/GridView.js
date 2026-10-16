@@ -31,6 +31,10 @@ const GHOST_VALID_COLOR = 0x8fd19e;
 const GHOST_INVALID_COLOR = 0xe08283;
 const GHOST_ALPHA = 0.6;
 
+/** The hint highlight: gold, drawn above every piece (pieces use the default depth of 0). */
+const HINT_COLOR = 0xf2b631;
+const HINT_DEPTH = 100;
+
 /** How many extra rows/cols out from the nearest cell findNearestValidOrigin() also
  *  considers when looking for a legal placement — this is what makes snapping feel
  *  forgiving rather than requiring a pixel-perfect hover. */
@@ -58,6 +62,11 @@ export class GridView
 
         /** @type {Phaser.GameObjects.Rectangle[]} currently-shown ghost highlight rectangles, if any — see showGhost/clearGhost. */
         this.ghostRects = [];
+
+        /** @type {Phaser.GameObjects.Rectangle[]} the hint highlight's rectangles, if one is showing - see showHint/clearHint. */
+        this.hintRects = [];
+        /** @type {Phaser.Tweens.Tween | null} the pulse animation on hintRects. */
+        this.hintTween = null;
 
         this.draw();
     }
@@ -176,6 +185,61 @@ export class GridView
             this.container.add(rect);
             this.ghostRects.push(rect);
         }
+    }
+
+    /**
+     * Highlights the cells of a shape placed at (originRow, originCol) as a HINT: a pulsing
+     * gold overlay that stays up until clearHint() is called. This is separate from the drag
+     * ghost (showGhost/clearGhost) so dragging a piece doesn't wipe it, and it is drawn above
+     * placed pieces (high depth) so it is still visible where the player has already put
+     * other pieces on those cells - the point of a hint is to nudge, not to move anything.
+     * The overlay is translucent, so whatever is underneath stays visible.
+     *
+     * @param {string} shapeId - the shape whose outline to highlight.
+     * @param {number} originRow
+     * @param {number} originCol
+     */
+    showHint (shapeId, originRow, originCol)
+    {
+        this.clearHint();
+
+        const size = this.cellSize - CELL_PADDING;
+
+        for (const cell of getShapeCells(shapeId))
+        {
+            // World-space (not inside this.container) so depth, not container order, decides
+            // that it sits above the piece views.
+            const center = this.cellToWorld(originRow + cell.row, originCol + cell.col);
+            const rect = this.scene.add
+                .rectangle(center.x, center.y, size, size, HINT_COLOR, 0.45)
+                .setStrokeStyle(3 * UI_SCALE, HINT_COLOR)
+                .setDepth(HINT_DEPTH);
+            this.hintRects.push(rect);
+        }
+
+        // A gentle pulse so the highlight reads as "look here" rather than a placed piece.
+        this.hintTween = this.scene.tweens.add({
+            targets: this.hintRects,
+            alpha: { from: 1, to: 0.45 },
+            duration: 700,
+            yoyo: true,
+            repeat: -1,
+        });
+    }
+
+    /** Removes the hint highlight, if any (see showHint). Safe to call when none is showing. */
+    clearHint ()
+    {
+        if (this.hintTween)
+        {
+            this.hintTween.stop();
+            this.hintTween = null;
+        }
+        for (const rect of this.hintRects)
+        {
+            rect.destroy();
+        }
+        this.hintRects = [];
     }
 
     /** Removes any ghost highlight currently shown (see showGhost). Safe to call even when no ghost is showing. */

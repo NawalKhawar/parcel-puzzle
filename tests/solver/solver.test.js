@@ -79,33 +79,52 @@ describe('solver.js — shipped levels.json regression', () => {
     }
 });
 
-describe('findHint — Hint button support', () => {
-    test('from an empty board, returns a legal placement of one of the pieces (largest first)', () => {
+describe('findHint - Hint button support (highlight only, never changes the board)', () => {
+    test('from an empty board, points at a legal spot for the largest piece', () => {
         const grid = new Grid(2, 3);
         const hint = findHint(grid, ['domino_h', 'tri_i', 'dot']); // 2+3+1 = the 6 open cells
         assert.ok(hint, 'a solvable board must yield a hint');
         assert.equal(hint.shapeId, 'tri_i', 'the largest piece is the one hinted');
-        assert.ok(grid.canPlace(hint.shapeId, hint.row, hint.col), 'the hinted placement must be legal');
+        assert.ok(grid.canPlace(hint.shapeId, hint.row, hint.col), 'the hinted area is free on an empty board');
         assert.equal(grid.placements.size, 0, 'findHint must leave the grid untouched');
     });
 
-    test('respects the pieces already on the board and only reports unplaced pieces', () => {
+    test('works from the current board: points only at pieces that are not placed yet, in free cells', () => {
         const grid = new Grid(2, 3);
-        grid.place('player-1', 'tri_i', 0, 0); // top row filled; only the bottom row is left.
-        const hint = findHint(grid, ['domino_h', 'dot']);
+        grid.place('player-1', 'tri_i', 0, 0); // top row filled and correct; only the bottom row is left.
+        const hint = findHint(grid, ['tri_i', 'domino_h', 'dot']);
         assert.ok(hint);
         assert.equal(hint.shapeId, 'domino_h');
-        assert.equal(hint.row, 1, 'must go in the still-empty bottom row');
-        assert.equal(grid.placements.size, 1, 'the player\'s piece is still the only thing on the grid');
+        assert.equal(hint.row, 1, 'must point into the still-empty bottom row');
+        assert.ok(grid.canPlace(hint.shapeId, hint.row, hint.col), 'and those cells are free');
+        assert.equal(grid.placements.size, 1, "the player's piece is still the only thing on the grid");
     });
 
-    test('returns null when the existing placements make the board unsolvable', () => {
+    test("on a dead end it still gives a hint, pointing at cells the player's wrong piece occupies", () => {
         const grid = new Grid(1, 4);
-        grid.place('player-1', 'dot', 0, 1); // splits the open cells into a lone cell (col 0) and a pair (cols 2-3).
-        assert.equal(findHint(grid, ['tri_i']), null, 'a 3-in-a-row piece can no longer fit anywhere');
+        grid.place('player-1', 'domino_h', 0, 1); // covers cols 1-2, stranding cols 0 and 3: unsolvable.
+        const hint = findHint(grid, ['domino_h', 'domino_h']);
+        assert.ok(hint, 'a dead end must not leave the player without a hint');
+        assert.equal(hint.shapeId, 'domino_h');
+        assert.ok(hint.col === 0 || hint.col === 2, 'the true solution is dominoes at columns 0 and 2');
+        assert.equal(grid.canPlace(hint.shapeId, hint.row, hint.col), false, "the hinted area overlaps the player's wrong piece");
+        assert.equal(grid.placements.size, 1, "nothing of the player's was cleared");
     });
 
-    test('returns null when there are no pieces left to hint', () => {
+    test('on a dead end, skips a solution piece the player already has in exactly the right place', () => {
+        const grid = new Grid(1, 5);
+        grid.place('player-1', 'domino_h', 0, 0); // matches the true solution (a domino at column 0)...
+        grid.place('player-2', 'dot', 0, 3); // ...but this dot strands cells 2 and 4: a dead end.
+        const hint = findHint(grid, ['domino_h', 'domino_h', 'dot']);
+        assert.ok(hint);
+        assert.equal(hint.shapeId, 'domino_h');
+        assert.notEqual(hint.col, 0, 'must not point at the domino that is already correct');
+    });
+
+    test('returns null when everything is already placed correctly, or there are no pieces', () => {
+        const grid = new Grid(1, 2);
+        grid.place('player-1', 'domino_h', 0, 0);
+        assert.equal(findHint(grid, ['domino_h']), null);
         assert.equal(findHint(new Grid(1, 1), []), null);
     });
 });

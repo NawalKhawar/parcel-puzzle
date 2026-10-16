@@ -57,7 +57,7 @@ The game will open at `http://localhost:8080` in your browser. While the server 
 - **Click and drag** polyomino pieces from the tray (bottom) onto the grid (top) to place them
 - **Snap alignment:** Pieces snap to the grid when dragged nearby
 - **Undo, Reset, Pause buttons** in the top-left HUD
-- **Hint button** (top-left, from level 2 onwards) places one piece in its correct spot; it can be used once per truck and then fades out
+- **Hint button** (top-left, from level 2 onwards) highlights, in gold, where one piece belongs on the board - it never moves your pieces, even if they are in the way. The highlight disappears once the right piece is placed there. It can be used once per truck and then fades out
 - **Coin counter** (top-left) shows your total earnings, which carry over from day to day
 
 ## How the Game Flows

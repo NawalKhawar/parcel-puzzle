@@ -101,6 +101,14 @@ Log.
   - [x] Workday/shift-complete screen (`ShiftCompleteScene.js`)
   - [x] Multi-level sequential flow (all of `levels.json` = one shift)
 
+- [x] **Milestones 9.1-9.6 — Post-M9 additions** (done 2026-10-15/16; added to ROADMAP.md)
+  - [x] 9.1 Title screen, day flow & persistent pay count
+  - [x] 9.2 30 generated levels (3 / 4 / 5 / 6 trucks per day)
+  - [x] 9.3 Portrait / square boards
+  - [x] 9.4 Hint button (highlight-only)
+  - [x] 9.5 Shop UI (placeholder tabs/items)
+  - [x] 9.6 Apartment UI (grid placement, ghost, 2.5D room)
+
 - [ ] **Milestone 10 — Visual Polish & Audio**
   - [ ] Sprite-based rendering
   - [ ] SFX
@@ -548,3 +556,21 @@ Log.
     up by the body and moving, illegal-drop snap-back (off-floor and onto another item),
     drag-to-inventory, and persistence after Back/Decorate. No console errors.
     255 tests pass (new: RoomProjection, RoomGrid, apartment/shop data).
+
+- 2026-10-16 — **Hint button reworked: highlight instead of place.** The old hint placed a
+  piece itself (and cleared the board on a dead end). Now it only nudges: pressing it draws a
+  pulsing gold overlay (`GridView.showHint`, drawn above the pieces) on the cells where one
+  piece belongs, and never places, moves or removes anything. `findHint(grid, allPieces)`
+  (core/Solver.js) now takes every piece of the puzzle and returns `{shapeId, row, col}`:
+  if the player's placements can still be completed it points at one of their *unplaced*
+  pieces (largest first) in a free spot consistent with the board; if they are a dead end it
+  solves an empty copy of the board and points at the largest piece of that solution not
+  already correctly placed - the highlighted cells may then overlap their wrong pieces.
+  `PuzzleScene.refreshHint()` re-evaluates after every placement/undo/reset: the highlight is
+  shown while the hinted piece (same shape, same origin) is not placed there, removed when it
+  is, and comes back if that piece is undone. It is also cleared on a win (a puzzle can have
+  several solutions). Still one hint per truck; the button fades after use. Verified in the
+  browser with real drags: highlight on an empty board; placing the hinted piece clears it,
+  undo restores it; on a dead end the placements are untouched and the highlight overlays the
+  wrong piece (2 cells overlapped); winning clears it. 256 tests pass.
+  The roadmap now has Milestones 9.1-9.6 recording all of the post-M9 work.

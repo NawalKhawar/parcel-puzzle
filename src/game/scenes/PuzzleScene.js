@@ -58,9 +58,11 @@ import { UI_SCALE } from '../uiScale.js';
  * that isn't the day's last shows WinScene, while the day's last truck shows
  * DayCompleteScene (see handleWin()), which offers Shop / Decorate / Next Day.
  *
- * From the second level onwards a Hint button is shown (createHud()): pressing it places
- * one piece in its correct spot (useHint(), built on core/Solver.findHint) and fades the
- * button out - one hint per truck.
+ * From the second level onwards a Hint button is shown (createHud()): pressing it
+ * highlights, on the board, the cells where one piece belongs (useHint(), built on
+ * core/Solver.findHint) and fades the button out - one hint per truck. The hint only
+ * nudges: it never places, moves or removes anything. The highlight stays until the
+ * right piece is actually sitting there (see refreshHint()).
  */
 
 /** A single cell size is used for both the board and the tray so a piece doesn't change
@@ -132,6 +134,10 @@ export class PuzzleScene extends Scene
         this.isPaused = false;
         /** Each truck allows one hint; a fresh scene instance per truck resets this. */
         this.hintUsed = false;
+        /** The hinted target ({ shapeId, row, col }) once the hint has been used, else null. */
+        this.hint = null;
+        /** Whether the hint highlight is currently drawn on the board. */
+        this.hintShowing = false;
         this.history = new PlacementHistory();
         /** @type {Map<string | number, PieceView>} placementId -> the PieceView placed under it, so undo can look a piece back up from the history stack. */
         this.pieceViewsById = new Map();
@@ -326,18 +332,17 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * Hint button handler: places ONE unplaced piece in its correct spot, once per truck.
+     * Hint button handler: highlights where one piece belongs, once per truck.
      *
-     * The spot comes from solving the board from its current state (see
-     * core/Solver.findHint), so the hint is always consistent with the pieces the
-     * player has already placed correctly. If the player's placements are a dead end (no
-     * way to finish the board from here), the board is cleared first - exactly like
-     * pressing Reset - and the hint is taken from the empty board instead, since a
-     * "correct place" can't exist alongside pieces that are wrong.
+     * The target comes from core/Solver.findHint: a piece the player has not placed yet,
+     * in a spot that fits the pieces already on the board - or, if what they have placed is
+     * a dead end, a piece of the true solution, in which case the highlighted area may
+     * overlap their wrong pieces. Either way nothing the player has placed is touched; the
+     * highlight is only a nudge (drawn by GridView.showHint above the pieces).
      *
-     * The button is faded out and disabled as soon as the hint is used, and stays that
-     * way even if the player then undoes/resets the board. A no-op while paused, after
-     * the truck is won, or once the hint has been used.
+     * The button is faded out and disabled as soon as the hint is used, and stays that way
+     * even if the player then undoes/resets the board. A no-op while paused, after the truck
+     * is won, or once the hint has been used.
      */
     useHint ()
     {
@@ -346,37 +351,60 @@ export class PuzzleScene extends Scene
             return;
         }
 
-        const unplacedPieces = () => this.pieceViews.filter((view) => !view.isPlaced);
-
-        let hint = findHint(this.grid, unplacedPieces().map((view) => view.shapeId));
+        const hint = findHint(this.grid, this.truck.pieces);
         if (!hint)
         {
-            this.resetLevel();
-            hint = findHint(this.grid, unplacedPieces().map((view) => view.shapeId));
-        }
-        if (!hint)
-        {
-            // Can't happen for shipped data (every truck is validated solvable); bail out
-            // without spending the hint rather than crash.
+            // Nothing left to point at (cannot happen for shipped data, where every truck is
+            // validated solvable); bail out without spending the hint rather than crash.
             return;
         }
 
-        // Which tray piece fills the hinted slot: any unplaced piece of that shape is
-        // interchangeable, so take the first.
-        const pieceView = unplacedPieces().find((view) => view.shapeId === hint.shapeId);
-
         this.hintUsed = true;
+        this.hint = hint;
         this.hintButton.disableInteractive();
         this.tweens.add({ targets: this.hintButton, alpha: 0.3, duration: 400 });
 
-        this.placePiece(pieceView, hint.row, hint.col);
+        this.refreshHint();
+    }
+
+    /**
+     * Keeps the hint highlight in step with the board. The highlight is shown while the
+     * hinted piece is NOT in the hinted spot, and removed once the right piece (same shape,
+     * same origin) is placed there. Because it is re-evaluated after every change to the
+     * board, undoing or resetting that piece brings the highlight back. A no-op until the
+     * hint has been used.
+     */
+    refreshHint ()
+    {
+        if (!this.hint)
+        {
+            return;
+        }
+
+        const { shapeId, row, col } = this.hint;
+        const isSatisfied = [...this.grid.placements.values()].some(
+            (placement) => placement.shapeId === shapeId && placement.originRow === row && placement.originCol === col
+        );
+
+        // Only touch the view when the state actually changes, so the pulse animation isn't
+        // restarted by every unrelated placement.
+        if (isSatisfied && this.hintShowing)
+        {
+            this.gridView.clearHint();
+            this.hintShowing = false;
+        }
+        else if (!isSatisfied && !this.hintShowing)
+        {
+            this.gridView.showHint(shapeId, row, col);
+            this.hintShowing = true;
+        }
     }
 
     /**
      * Commits a piece to the board at a legal origin: records it on the Grid and in the
      * undo history, snaps and locks its view, and fires win handling if that completed
-     * the board. Shared by a normal drag-drop and by the Hint button, so both go through
-     * exactly the same steps.
+     * the board. Used by the drag-drop handler; refreshes the hint highlight, since the
+     * piece just placed may be the one the hint was pointing at.
      *
      * @param {PieceView} pieceView - an unplaced piece.
      * @param {number} row - board row of the piece's origin (must be a legal placement).
@@ -391,6 +419,8 @@ export class PuzzleScene extends Scene
         pieceView.container.setPosition(snapped.x, snapped.y);
 
         pieceView.lockInPlace();
+
+        this.refreshHint();
 
         // hasWon guards against ever launching WinScene twice: once every open
         // cell is filled, isComplete() keeps returning true, but there are no
@@ -522,6 +552,8 @@ export class PuzzleScene extends Scene
         const pieceView = this.pieceViewsById.get(placementId);
         pieceView.unlock();
         pieceView.container.setPosition(pieceView.homeX, pieceView.homeY);
+
+        this.refreshHint();
     }
 
     /**
@@ -618,6 +650,8 @@ export class PuzzleScene extends Scene
 
         // Keep the HUD counter (visible dimmed behind the overlay) in step with the popup.
         this.coinText.setText(`$${totalEarned}`);
+
+        this.gridView.clearHint();
 
         const trucksTotal = this.levelData.trucks.length;
         const isLastTruck = this.truckIndex === trucksTotal - 1;
