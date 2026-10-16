@@ -8,14 +8,14 @@ import { UI_SCALE } from '../uiScale.js';
  * after the last truck of a level (day) is packed. It reports how many trucks were
  * completed and how much was earned that day, then offers three buttons:
  *
- *   Shop      - opens ShopScene, a blank placeholder screen with a Back button.
- *   Decorate  - opens DecorateScene, likewise a blank placeholder.
+ *   Shop      - opens ShopScene (three tabs of placeholder items; Back returns here).
+ *   Decorate  - opens ApartmentScene, where furniture is arranged on a grid (Back returns here).
  *   Next Day  - starts truck 1 of the next level. On the very last level there is no
  *               next day, so this button becomes "Finish" and returns to the title screen.
  *
  * PuzzleScene launches this on top of itself (paused), so the finished board shows
  * dimmed behind the popup, the same treatment WinScene uses between trucks. Shop and
- * Decorate hand this scene's data back via their Back buttons, which restart this scene
+ * Apartment hand this scene's data back via their Back buttons, which restart this scene
  * so the popup reappears exactly as the player left it.
  */
 export class DayCompleteScene extends Scene
@@ -105,7 +105,7 @@ export class DayCompleteScene extends Scene
         };
 
         makeButton(centerX - spacing, 'Shop', () => this.scene.start('ShopScene', data));
-        makeButton(centerX, 'Decorate', () => this.scene.start('DecorateScene', data));
+        makeButton(centerX, 'Decorate', () => this.scene.start('ApartmentScene', data));
 
         if (data.isLastLevel)
         {

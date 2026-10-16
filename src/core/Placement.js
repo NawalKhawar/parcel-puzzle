@@ -9,7 +9,7 @@
  * with plain arrays/sets passed in by the caller. Grid.js is the stateful wrapper
  * that owns a board's blocked/filled cells and calls into these functions; keeping
  * the math here pure makes it trivial to unit test in isolation (Milestone 8) and to
- * reuse from the solver (scripts/solver.js), which explores many hypothetical
+ * reuse from the solver (src/core/Solver.js), which explores many hypothetical
  * placements per second and doesn't want the overhead of a full Grid mutation for
  * every "what if I placed this here?" check.
  *

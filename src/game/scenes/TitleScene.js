@@ -56,6 +56,7 @@ export class TitleScene extends Scene
             // running total; it is never reset between days, only here.) PuzzleScene
             // resets the per-day totals itself whenever it starts truck 0.
             this.registry.set('totalEarned', 0);
+            this.registry.set('apartmentLayout', {}); // ...and an empty apartment.
             this.scene.start('PuzzleScene', { levelIndex: 0, truckIndex: 0 });
         });
     }

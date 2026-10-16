@@ -480,3 +480,71 @@ Log.
     bands creep harder with level number). `tests/data/levels.test.js` checks the exact
     label sequence per level. Regenerated; 215 tests pass. Three level-28/29/30 hard
     trucks relax the "<= 3 solutions" rule (generator prints a warning).
+
+- 2026-10-15 — **All boards are now square or portrait** (rows >= cols), since the board
+  will later represent the open back of a mail truck. Pieces are fixed-orientation, so
+  boards weren't simply transposed: the generator's `BOARD_SIZES` is now portrait-only
+  (2-7 rows x 2-5 cols) and the whole level set was regenerated (same plan: same truck
+  counts, difficulty labels and rewards formula; the specific puzzles are new). A new test
+  asserts `rows >= cols` for every truck. Tall boards would crowd out the piece tray, so
+  `PuzzleScene` now sizes cells per truck: `cellSize = min(72, 360 / rows)` (replacing the
+  fixed `CELL_SIZE`), so a 7-row board uses ~51px cells; the tray uses the same size so
+  pieces don't change size when placed. Checked by screenshot on the tallest boards
+  (7x5, 6x5, 6x3, 4x2). 216 tests pass.
+
+- 2026-10-15 — **Hint button.** Shown from the second level (day) onwards only; pressing
+  it places one unplaced piece in its correct spot, once per truck, then the button
+  fades to 30% opacity and is disabled (it stays used through Undo/Reset; a new truck
+  gets a fresh hint). Decisions: (1) the solver moved from `scripts/solver.js` to
+  `src/core/Solver.js` because the game now needs it at runtime and game code shouldn't
+  import from `scripts/` (all imports/docs updated); (2) new `findHint(grid, remaining)`
+  solves from the board's *current* state, so the hint always agrees with whatever the
+  player has already placed correctly, and picks the largest remaining piece (most
+  informative); `solve()` now only reports pieces it placed itself, not ones already on
+  the grid; (3) if the player's placements are a dead end (unsolvable), the board is
+  cleared first (like Reset) and the hint comes from the empty board; (4) the drag-drop
+  commit code was extracted into `PuzzleScene.placePiece()` so the hint and a normal drop
+  share one path (including win detection - a hint that completes the board wins).
+  Verified in the browser: no button on level 1; level 2 shows it; one click places the
+  big piece and fades the button; a second click does nothing; the board can then be
+  finished from the hinted state and reaches the day-complete popup; the dead-end case
+  clears and re-hints; reset doesn't restore it. 220 tests pass (4 new for findHint).
+
+- 2026-10-16 — **Shop UI and Apartment UI** (placeholder content, real interaction).
+  - **Shop** (`ShopScene`): three horizontal tabs - Clothes, Accessories, Decor - each
+    showing 8 labelled placeholder boxes; tabs/items come from `src/data/shop.json`.
+    Nothing is purchasable yet. Replaces the old blank placeholder screen.
+  - **Apartment** (`ApartmentScene`, opened by the popup's "Decorate" button; the old
+    `DecorateScene`/`PlaceholderScreenScene` were removed). 8x6 floor grid, inventory panel
+    of 8 placeholder furniture items with different footprints (1x1, 2x1, 3x1, 2x2, 2x3,
+    3x2), from `src/data/apartment.json`. Drag from the inventory -> a ghost shows the
+    snapped footprint (green = legal, red = not); release places it; click a placed item
+    to pick it up again; drop it on the inventory panel to put it away; an illegal drop
+    returns it to where it came from. Layout persists in the registry (`apartmentLayout`)
+    across leaving/re-entering, and resets on Play from the title screen.
+  - **The 2.5D maths** (`src/core/RoomProjection.js`, pure + unit-tested): the back wall is a
+    flat rectangle; the floor is a trapezoid (narrow at the back, wide at the front), rows
+    are horizontal lines, and column spacing widens linearly toward the viewer, so side walls
+    angle outward. The mapping (u, v) -> (x, y) is exactly invertible, which is what lets the
+    mouse position be turned back into a grid cell without off-by-one drift near the back.
+    Rows are evenly spaced rather than bunching toward the back like a true perspective
+    divide - a deliberate simplification that keeps the maths exact. Furniture is a box whose
+    height is drawn straight up the screen, scaled by distance, with the inner side face
+    shown (the side facing the room's centre line).
+  - **Depth/overlap** (`src/core/RoomGrid.js`): items are drawn back to front by their
+    *front edge* (row + depth), so a nearer item covers a farther one and a tall item hides
+    what is behind it; clicking picks the front-most item under the mouse (hit-testing the
+    box's faces, so a tall item can be grabbed by its body). Placement rule: inside the
+    room, no overlaps - except **flat items (rugs)**, which normal items may sit on (my
+    addition; two rugs or two normal items still cannot overlap).
+  - **Judgment calls:** no wall-mounted items (the back wall is decorative only, with a
+    window); each furniture item exists once (placing removes it from the inventory
+    panel); the held item follows the mouse (drawn undistorted over the panel, since the
+    projection would shear it far off the floor); the ghost also tints a faint box so item
+    height is visible.
+  - Verified with real mouse input in headless Chromium: all three shop tabs, valid drop
+    (green ghost, placed), overlapping drop (red ghost, rejected, item back in inventory),
+    placing all 8 items incl. a rug under a table/lamp, correct front/back overlap, picking
+    up by the body and moving, illegal-drop snap-back (off-floor and onto another item),
+    drag-to-inventory, and persistence after Back/Decorate. No console errors.
+    255 tests pass (new: RoomProjection, RoomGrid, apartment/shop data).

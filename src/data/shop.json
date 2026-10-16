@@ -1,0 +1,46 @@
+{
+  "tabs": [
+    {
+      "id": "clothes",
+      "label": "Clothes",
+      "items": [
+        { "id": "clothes-1", "name": "Clothes Item 1" },
+        { "id": "clothes-2", "name": "Clothes Item 2" },
+        { "id": "clothes-3", "name": "Clothes Item 3" },
+        { "id": "clothes-4", "name": "Clothes Item 4" },
+        { "id": "clothes-5", "name": "Clothes Item 5" },
+        { "id": "clothes-6", "name": "Clothes Item 6" },
+        { "id": "clothes-7", "name": "Clothes Item 7" },
+        { "id": "clothes-8", "name": "Clothes Item 8" }
+      ]
+    },
+    {
+      "id": "accessories",
+      "label": "Accessories",
+      "items": [
+        { "id": "accessory-1", "name": "Accessory 1" },
+        { "id": "accessory-2", "name": "Accessory 2" },
+        { "id": "accessory-3", "name": "Accessory 3" },
+        { "id": "accessory-4", "name": "Accessory 4" },
+        { "id": "accessory-5", "name": "Accessory 5" },
+        { "id": "accessory-6", "name": "Accessory 6" },
+        { "id": "accessory-7", "name": "Accessory 7" },
+        { "id": "accessory-8", "name": "Accessory 8" }
+      ]
+    },
+    {
+      "id": "decor",
+      "label": "Decor",
+      "items": [
+        { "id": "decor-1", "name": "Decor Item 1" },
+        { "id": "decor-2", "name": "Decor Item 2" },
+        { "id": "decor-3", "name": "Decor Item 3" },
+        { "id": "decor-4", "name": "Decor Item 4" },
+        { "id": "decor-5", "name": "Decor Item 5" },
+        { "id": "decor-6", "name": "Decor Item 6" },
+        { "id": "decor-7", "name": "Decor Item 7" },
+        { "id": "decor-8", "name": "Decor Item 8" }
+      ]
+    }
+  ]
+}

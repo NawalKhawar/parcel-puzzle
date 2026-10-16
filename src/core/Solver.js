@@ -1,15 +1,16 @@
 /**
- * solver.js
+ * Solver.js
  *
- * A backtracking exact-cover solver for a single level: given a src/core/Grid (with
- * its blocked cells already set, and no pieces placed yet) and a multiset of piece
- * shape ids, finds how many distinct ways the pieces can completely fill the grid's
- * open cells.
+ * A backtracking exact-cover solver for a single truck (puzzle): given a src/core/Grid
+ * (with its blocked cells set, and optionally some pieces already placed) and a multiset
+ * of the piece shape ids still to place, finds how many distinct ways the pieces can
+ * completely fill the grid's remaining open cells.
  *
- * This is a plain Node module (no Phaser dependency — see "Architectural boundary" in
- * PROJECT_STRUCTURE.md) built entirely on top of src/core/, so it can run standalone
- * via `node scripts/validate-levels.js` without a browser, and so it can be unit/
- * regression-tested directly (Milestone 8) against known expected solution counts.
+ * Lives in src/core/ (no Phaser dependency — see "Architectural boundary" in
+ * PROJECT_STRUCTURE.md) because it has two kinds of users: the Node scripts
+ * (`node scripts/validate-levels.js`, scripts/generate-levels.js) and the game itself,
+ * whose Hint button uses findHint() below. It can be unit/regression-tested directly
+ * against known expected solution counts.
  *
  * Algorithm: classic backtracking exact-cover. At each step, find the first open
  * (unblocked, unfilled) cell in top-to-bottom, left-to-right scan order. If there is
@@ -25,10 +26,10 @@
  * solution, since the player has no way to tell those pieces apart in the first place.
  */
 
-import { getShapeCells } from '../src/core/Shape.js';
+import { getShapeCells, getShapeCellCount } from './Shape.js';
 
 /**
- * @typedef {import('../src/core/Grid.js').Grid} Grid
+ * @typedef {import('./Grid.js').Grid} Grid
  */
 
 /**
@@ -99,6 +100,11 @@ export function solve(grid, pieces, options = {}) {
     let nodeBudgetExceeded = false;
     let placementCounter = 0;
 
+    // If the grid already has pieces on it (e.g. the player's own placements, when
+    // solving for a hint), those must stay put and must not be reported as part of the
+    // solution - a solution only lists the pieces THIS search placed.
+    const preExistingIds = new Set(grid.placements.keys());
+
     function recurse() {
         if (nodeBudgetExceeded || solutions.length >= maxSolutions) {
             return;
@@ -113,6 +119,9 @@ export function solve(grid, pieces, options = {}) {
             // No open cells left: every placement so far forms a valid solution.
             const solution = {};
             for (const [placementId, placement] of grid.placements) {
+                if (preExistingIds.has(placementId)) {
+                    continue;
+                }
                 solution[placementId] = {
                     shapeId: placement.shapeId,
                     originRow: placement.originRow,
@@ -167,4 +176,37 @@ export function solve(grid, pieces, options = {}) {
         nodeBudgetExceeded,
         nodesExplored,
     };
+}
+
+/**
+ * Picks one piece to give away as a hint: solves the board from its CURRENT state (any
+ * pieces already on the grid stay where they are) and returns where one of the
+ * still-unplaced pieces belongs in a complete solution.
+ *
+ * The largest remaining piece is chosen, since placing a big piece gives the player the
+ * most information (a lone 1-cell piece would barely help).
+ *
+ * @param {Grid} grid - the current board, with the player's placements on it.
+ * @param {string[]} remainingPieces - shape ids of the pieces not yet placed.
+ * @returns {{shapeId: string, row: number, col: number} | null} where to put one piece,
+ *   or null if the board can't be completed from its current state (i.e. the player's
+ *   existing placements are a dead end) - the caller decides how to recover, e.g. by
+ *   clearing the board and asking again.
+ */
+export function findHint(grid, remainingPieces) {
+    if (remainingPieces.length === 0) {
+        return null;
+    }
+
+    const result = solve(grid, remainingPieces, { maxSolutions: 1, maxNodes: 200000 });
+    if (result.solutionCount === 0) {
+        return null;
+    }
+
+    // Order the solution's placements largest-first and take the first one.
+    const placements = Object.values(result.solutions[0]).sort(
+        (a, b) => getShapeCellCount(b.shapeId) - getShapeCellCount(a.shapeId)
+    );
+    const best = placements[0];
+    return { shapeId: best.shapeId, row: best.originRow, col: best.originCol };
 }

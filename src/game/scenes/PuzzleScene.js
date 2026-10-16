@@ -2,6 +2,7 @@ import { Scene } from 'phaser';
 
 import { loadLevels, createGridForTruck } from '../../data/loadLevel.js';
 import { getShapeBounds } from '../../core/Shape.js';
+import { findHint } from '../../core/Solver.js';
 import levelsRaw from '../../data/levels.json';
 import { GridView } from '../objects/GridView.js';
 import { PieceView } from '../objects/PieceView.js';
@@ -56,6 +57,10 @@ import { UI_SCALE } from '../uiScale.js';
  * resets it). The coin HUD shows that all-time total (createHud()); finishing a truck
  * that isn't the day's last shows WinScene, while the day's last truck shows
  * DayCompleteScene (see handleWin()), which offers Shop / Decorate / Next Day.
+ *
+ * From the second level onwards a Hint button is shown (createHud()): pressing it places
+ * one piece in its correct spot (useHint(), built on core/Solver.findHint) and fades the
+ * button out - one hint per truck.
  */
 
 /** A single cell size is used for both the board and the tray so a piece doesn't change
@@ -66,7 +71,12 @@ import { UI_SCALE } from '../uiScale.js';
  *  on screen — the canvas itself is bigger (set from the same UI_SCALE in main.js),
  *  so everything drawn onto it needs to grow by the same factor to end up the same
  *  on-screen size, just built from more real pixels. */
-const CELL_SIZE = 72 * UI_SCALE;
+const MAX_CELL_SIZE = 72 * UI_SCALE;
+
+/** Boards are square or portrait (they represent the open back of a truck), so some are
+ *  taller than the screen has room for. A board is never drawn taller than this: tall
+ *  boards get a smaller cell size instead (see create()), keeping room for the tray. */
+const BOARD_MAX_HEIGHT = 360 * UI_SCALE;
 const TRAY_PIECE_GAP = 24 * UI_SCALE;
 const TRAY_TOP_MARGIN = 64 * UI_SCALE;
 const TRAY_SIDE_MARGIN = 40 * UI_SCALE;
@@ -120,6 +130,8 @@ export class PuzzleScene extends Scene
 
         this.hasWon = false;
         this.isPaused = false;
+        /** Each truck allows one hint; a fresh scene instance per truck resets this. */
+        this.hintUsed = false;
         this.history = new PlacementHistory();
         /** @type {Map<string | number, PieceView>} placementId -> the PieceView placed under it, so undo can look a piece back up from the history stack. */
         this.pieceViewsById = new Map();
@@ -138,11 +150,16 @@ export class PuzzleScene extends Scene
         this.truck = truck;
         this.grid = createGridForTruck(truck);
 
-        const boardPixelWidth = truck.cols * CELL_SIZE;
+        // One cell size is used for the board and the tray (see the note on
+        // MAX_CELL_SIZE). Normally the maximum, but shrunk for tall boards so the board
+        // never exceeds BOARD_MAX_HEIGHT (e.g. a 7-row board gets ~51px cells, not 72px).
+        this.cellSize = Math.min(MAX_CELL_SIZE, BOARD_MAX_HEIGHT / truck.rows);
+
+        const boardPixelWidth = truck.cols * this.cellSize;
         const boardX = (this.scale.width - boardPixelWidth) / 2;
         const boardY = 56 * UI_SCALE;
 
-        this.gridView = new GridView(this, boardX, boardY, this.grid, CELL_SIZE);
+        this.gridView = new GridView(this, boardX, boardY, this.grid, this.cellSize);
 
         // "Level N · Truck k/total" header. The truck total is read from the level's own
         // truck list, so it stays correct automatically as levels are edited (no separate
@@ -201,7 +218,7 @@ export class PuzzleScene extends Scene
         let rowHeight = 0;
 
         this.truck.pieces.forEach((shapeId, index) => {
-            const pieceView = new PieceView(this, cursorX, cursorY, shapeId, CELL_SIZE, `tray-${index}`);
+            const pieceView = new PieceView(this, cursorX, cursorY, shapeId, this.cellSize, `tray-${index}`);
             pieceView.setTrayScale(trayScale);
 
             const width = pieceView.pixelWidth * trayScale;
@@ -248,8 +265,8 @@ export class PuzzleScene extends Scene
 
         this.truck.pieces.forEach((shapeId) => {
             const bounds = getShapeBounds(shapeId);
-            const width = bounds.cols * CELL_SIZE * scale;
-            const height = bounds.rows * CELL_SIZE * scale;
+            const width = bounds.cols * this.cellSize * scale;
+            const height = bounds.rows * this.cellSize * scale;
 
             if (cursorX + width > maxTrayRight && cursorX > trayStartX)
             {
@@ -299,6 +316,91 @@ export class PuzzleScene extends Scene
         makeButton(56 * UI_SCALE, 'Undo', () => this.undoLast());
         makeButton(96 * UI_SCALE, 'Reset', () => this.resetLevel());
         this.pauseButton = makeButton(136 * UI_SCALE, 'Pause', () => this.togglePause());
+
+        // The Hint button only exists from the second level onwards (level index 1+), so
+        // the very first day stays hint-free.
+        if (this.levelIndex >= 1)
+        {
+            this.hintButton = makeButton(176 * UI_SCALE, 'Hint', () => this.useHint());
+        }
+    }
+
+    /**
+     * Hint button handler: places ONE unplaced piece in its correct spot, once per truck.
+     *
+     * The spot comes from solving the board from its current state (see
+     * core/Solver.findHint), so the hint is always consistent with the pieces the
+     * player has already placed correctly. If the player's placements are a dead end (no
+     * way to finish the board from here), the board is cleared first - exactly like
+     * pressing Reset - and the hint is taken from the empty board instead, since a
+     * "correct place" can't exist alongside pieces that are wrong.
+     *
+     * The button is faded out and disabled as soon as the hint is used, and stays that
+     * way even if the player then undoes/resets the board. A no-op while paused, after
+     * the truck is won, or once the hint has been used.
+     */
+    useHint ()
+    {
+        if (this.hintUsed || this.isPaused || this.hasWon)
+        {
+            return;
+        }
+
+        const unplacedPieces = () => this.pieceViews.filter((view) => !view.isPlaced);
+
+        let hint = findHint(this.grid, unplacedPieces().map((view) => view.shapeId));
+        if (!hint)
+        {
+            this.resetLevel();
+            hint = findHint(this.grid, unplacedPieces().map((view) => view.shapeId));
+        }
+        if (!hint)
+        {
+            // Can't happen for shipped data (every truck is validated solvable); bail out
+            // without spending the hint rather than crash.
+            return;
+        }
+
+        // Which tray piece fills the hinted slot: any unplaced piece of that shape is
+        // interchangeable, so take the first.
+        const pieceView = unplacedPieces().find((view) => view.shapeId === hint.shapeId);
+
+        this.hintUsed = true;
+        this.hintButton.disableInteractive();
+        this.tweens.add({ targets: this.hintButton, alpha: 0.3, duration: 400 });
+
+        this.placePiece(pieceView, hint.row, hint.col);
+    }
+
+    /**
+     * Commits a piece to the board at a legal origin: records it on the Grid and in the
+     * undo history, snaps and locks its view, and fires win handling if that completed
+     * the board. Shared by a normal drag-drop and by the Hint button, so both go through
+     * exactly the same steps.
+     *
+     * @param {PieceView} pieceView - an unplaced piece.
+     * @param {number} row - board row of the piece's origin (must be a legal placement).
+     * @param {number} col - board column of the piece's origin.
+     */
+    placePiece (pieceView, row, col)
+    {
+        this.grid.place(pieceView.placementId, pieceView.shapeId, row, col);
+        this.history.push(pieceView.placementId);
+
+        const snapped = this.gridView.originToWorld(row, col);
+        pieceView.container.setPosition(snapped.x, snapped.y);
+
+        pieceView.lockInPlace();
+
+        // hasWon guards against ever launching WinScene twice: once every open
+        // cell is filled, isComplete() keeps returning true, but there are no
+        // more unplaced pieces left to drag anyway — the guard is just cheap
+        // insurance against launching the overlay a second time.
+        if (!this.hasWon && this.grid.isComplete())
+        {
+            this.hasWon = true;
+            this.handleWin();
+        }
     }
 
     /**
@@ -362,23 +464,7 @@ export class PuzzleScene extends Scene
 
             if (isValid)
             {
-                this.grid.place(pieceView.placementId, pieceView.shapeId, row, col);
-                this.history.push(pieceView.placementId);
-
-                const snapped = this.gridView.originToWorld(row, col);
-                gameObject.setPosition(snapped.x, snapped.y);
-
-                pieceView.lockInPlace();
-
-                // hasWon guards against ever launching WinScene twice: once every open
-                // cell is filled, isComplete() keeps returning true, but there are no
-                // more unplaced pieces left to drag anyway — the guard is just cheap
-                // insurance against launching the overlay a second time.
-                if (!this.hasWon && this.grid.isComplete())
-                {
-                    this.hasWon = true;
-                    this.handleWin();
-                }
+                this.placePiece(pieceView, row, col);
             }
             else
             {
@@ -408,7 +494,7 @@ export class PuzzleScene extends Scene
      */
     isNearBoard (worldX, worldY)
     {
-        const margin = CELL_SIZE;
+        const margin = this.cellSize;
         return (
             worldX > this.gridView.x - margin &&
             worldX < this.gridView.x + this.gridView.pixelWidth + margin &&

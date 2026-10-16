@@ -15,7 +15,7 @@
  *   out-path defaults to scripts/.screenshots/puzzle-scene.png (gitignored — these are
  *   throwaway verification artifacts, not something to commit).
  *
- * Unlike the rest of scripts/ (solver.js, validate-levels.js), this one is NOT
+ * Unlike the rest of scripts/ (validate-levels.js, generate-levels.js), this one is NOT
  * Phaser-free by design — its whole job is to drive and inspect the real browser
  * build, not to run puzzle logic standalone.
  */

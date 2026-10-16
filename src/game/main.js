@@ -7,7 +7,7 @@ import { WinScene } from './scenes/WinScene';
 import { TitleScene } from './scenes/TitleScene';
 import { DayCompleteScene } from './scenes/DayCompleteScene';
 import { ShopScene } from './scenes/ShopScene';
-import { DecorateScene } from './scenes/DecorateScene';
+import { ApartmentScene } from './scenes/ApartmentScene';
 import { UI_SCALE } from './uiScale.js';
 import { AUTO, Game, Scale } from 'phaser';
 
@@ -36,7 +36,7 @@ const config = {
         WinScene,
         DayCompleteScene,
         ShopScene,
-        DecorateScene,
+        ApartmentScene,
         MainGame,
         GameOver
     ]

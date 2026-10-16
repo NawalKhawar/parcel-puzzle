@@ -12,7 +12,7 @@
  *      pick a board size + blocked cells, then randomly tile the open cells with
  *      polyominoes. The pieces used in the tiling become the truck's piece list - so a
  *      solution is guaranteed to exist by construction.
- *   3. Every candidate is still run through the real solver (scripts/solver.js) to count
+ *   3. Every candidate is still run through the real solver (src/core/Solver.js) to count
  *      solutions and measure search effort, and is given a difficulty SCORE (0..1) from
  *      its measurable features (board size, odd-shaped pieces, blocked cells, piece
  *      count, search effort). The candidate whose score lands closest to the target `t`
@@ -34,7 +34,7 @@ import path from 'node:path';
 import { Grid } from '../src/core/Grid.js';
 import { getShapeCells } from '../src/core/Shape.js';
 import { loadLevels } from '../src/data/loadLevel.js';
-import { solve } from './solver.js';
+import { solve } from '../src/core/Solver.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_PATH = path.resolve(__dirname, '../src/data/levels.json');
@@ -236,21 +236,22 @@ function weightsFor(t) {
 // ---------------------------------------------------------------------------
 
 /**
- * Every board size the generator may use, as [rows, cols]. Boards are always landscape
- * (cols >= rows) and at most 5 rows x 7 cols so they, plus the piece tray under them,
- * always fit on the 1024x768 screen.
+ * Every board size the generator may use, as [rows, cols]. Boards are always square or
+ * portrait (rows >= cols), never landscape, because the board will eventually represent
+ * the open back of a mail truck. At most 7 rows x 5 cols; PuzzleScene shrinks the cell
+ * size on tall boards so board + piece tray still fit on the 1024x768 screen.
  */
 const BOARD_SIZES = [
-    [2, 4], [2, 5], [2, 6], [2, 7],
-    [3, 3], [3, 4], [3, 5], [3, 6], [3, 7],
-    [4, 4], [4, 5], [4, 6], [4, 7],
-    [5, 5], [5, 6], [5, 7],
+    [4, 2], [5, 2], [6, 2], [7, 2],
+    [3, 3], [4, 3], [5, 3], [6, 3], [7, 3],
+    [4, 4], [5, 4], [6, 4], [7, 4],
+    [5, 5], [6, 5], [7, 5],
 ];
 
 /**
  * Picks a board size and blocked-cell count for a target difficulty. Harder = more open
- * cells (8 at t=0 up to 30 at t=1), more blocked cells (0 up to 4), and taller boards
- * (2-row boards are close to a 1-D puzzle, so they're only used while the game is easy).
+ * cells (8 at t=0 up to 30 at t=1), more blocked cells (0 up to 4), and wider boards
+ * (2-column boards are close to a 1-D puzzle, so they're only used while the game is easy).
  *
  * @param {number} t
  * @param {() => number} rng
@@ -259,17 +260,17 @@ const BOARD_SIZES = [
 function pickBoard(t, rng) {
     const targetOpen = Math.round(8 + 22 * t);
     const blockedCount = t < 0.12 ? 0 : Math.round(t * 4);
-    const minRows = t < 0.15 ? 2 : t < 0.45 ? 3 : 4;
+    const minCols = t < 0.15 ? 2 : t < 0.45 ? 3 : 4;
 
     // Score every allowed size by how close its open-cell count is to the target.
-    const options = BOARD_SIZES.filter(([rows]) => rows >= minRows).map(([rows, cols]) => ({
+    const options = BOARD_SIZES.filter(([, cols]) => cols >= minCols).map(([rows, cols]) => ({
         rows,
         cols,
         distance: Math.abs(rows * cols - blockedCount - targetOpen),
     }));
     const best = Math.min(...options.map((o) => o.distance));
     // Anything within 2 cells of the best fit is fair game; choosing randomly among them
-    // gives variety (e.g. a 4x5 vs a 3x7) instead of always the same board for a given t.
+    // gives variety (e.g. a 5x4 vs a 7x3) instead of always the same board for a given t.
     const close = options.filter((o) => o.distance <= best + 2);
     const pick = close[Math.floor(rng() * close.length)];
     return { rows: pick.rows, cols: pick.cols, blockedCount };

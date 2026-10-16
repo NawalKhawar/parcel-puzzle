@@ -3,7 +3,7 @@
  *
  * Pure data + accessors for the polyomino shape vocabulary. This module must NEVER
  * import 'phaser' — see "Architectural boundary" in PROJECT_STRUCTURE.md. It is used
- * by the Phaser rendering layer (src/game/), the solver (scripts/solver.js), and the
+ * by the Phaser rendering layer (src/game/), the solver (src/core/Solver.js), and the
  * test suite, all of which need the exact same shape definitions.
  *
  * A shape is stored as a list of relative {row, col} cell offsets, normalized so the

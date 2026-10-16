@@ -124,6 +124,14 @@ describe('shipped levels.json matches the game design spec', () => {
         assert.ok(avg(levels[1]) > avg(levels[0]), 'level 2 should average harder than level 1');
     });
 
+    test('every board is square or portrait (never landscape)', () => {
+        for (const level of levels) {
+            for (const truck of level.trucks) {
+                assert.ok(truck.rows >= truck.cols, `${truck.id} is ${truck.rows}x${truck.cols} (rows x cols), which is landscape`);
+            }
+        }
+    });
+
     test('every truck has a positive integer reward', () => {
         for (const level of levels) {
             for (const truck of level.trucks) {

@@ -42,7 +42,7 @@ Planning documents, read in this order when picking up work:
     collaborator, so err on the side of more explanation rather than less.
 - Keep `src/core/` and `src/data/` free of any `import ... from 'phaser'` — see
   "Architectural boundary" in `PROJECT_STRUCTURE.md`. This is what keeps the puzzle
-  logic unit-testable and usable from plain Node scripts (`scripts/solver.js`,
+  logic unit-testable and usable from plain Node scripts (`src/core/Solver.js`,
   `scripts/validate-levels.js`) without a browser.
 - Keep piece shapes, grid dimensions, blocked-cell layouts, and piece counts
   **data-driven** (via `src/data/`), not hardcoded into scene/engine code — the design

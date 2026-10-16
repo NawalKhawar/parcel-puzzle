@@ -4,7 +4,7 @@
  *
  * CLI entry point: loads every level (day) in src/data/levels.json, validates it
  * against the schema (src/data/loadLevel.js), then runs the backtracking solver
- * (scripts/solver.js) against every truck (puzzle) in it to confirm each is actually
+ * (src/core/Solver.js) against every truck (puzzle) in it to confirm each is actually
  * solvable - not just internally consistent. Prints a per-truck report and exits
  * non-zero if anything is wrong, naming the offending truck, so a broken or unsolvable
  * puzzle can never silently reach the game.
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 import { loadLevels, createGridForTruck } from '../src/data/loadLevel.js';
-import { solve } from './solver.js';
+import { solve } from '../src/core/Solver.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LEVELS_PATH = path.resolve(__dirname, '../src/data/levels.json');
@@ -28,7 +28,7 @@ const LEVELS_PATH = path.resolve(__dirname, '../src/data/levels.json');
 /**
  * Classifies a solve() result into "unique / 2 or more / unsolvable" buckets.
  *
- * @param {import('./solver.js').SolveResult} result
+ * @param {import('../src/core/Solver.js').SolveResult} result
  * @returns {string}
  */
 function classifySolutions(result) {

@@ -37,7 +37,9 @@ have 6 (2 easy, 2 medium, 2 hard).
    *  "level-07-truck-3". */
   id: string;
 
-  /** Board height (number of grid rows). Must be a positive integer. */
+  /** Board height (number of grid rows). Must be a positive integer. By design every
+   *  shipped board is square or portrait (rows >= cols), because the board represents the
+   *  open back of a mail truck; tests/data/levels.test.js enforces this. */
   rows: number;
 
   /** Board width (number of grid columns). Must be a positive integer. */

@@ -4,7 +4,7 @@
  * The stateful board model for a single puzzle level: its dimensions, which cells are
  * permanently blocked (unusable), and which cells are currently covered by placed
  * pieces. This is the main object the Phaser scene (src/game/), the solver
- * (scripts/solver.js), and tests (tests/core/) all interact with to ask "can this piece
+ * (src/core/Solver.js), and tests (tests/core/) all interact with to ask "can this piece
  * go here?", to actually place/remove pieces, and to check for a win.
  *
  * Must never import 'phaser' — see "Architectural boundary" in PROJECT_STRUCTURE.md.

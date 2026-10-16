@@ -1,7 +1,7 @@
 /**
  * solver.test.js
  *
- * Regression tests for scripts/solver.js: asserts that every truck (puzzle) of every
+ * Regression tests for src/core/Solver.js: asserts that every truck (puzzle) of every
  * level in src/data/levels.json is still solvable - if a future change to Shape.js,
  * Placement.js, Grid.js, or levels.json breaks a puzzle, this is the test that should
  * catch it.
@@ -14,7 +14,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { Grid } from '../../src/core/Grid.js';
-import { solve } from '../../scripts/solver.js';
+import { solve, findHint } from '../../src/core/Solver.js';
 import { loadLevels, createGridForTruck } from '../../src/data/loadLevel.js';
 import levelsRaw from '../../src/data/levels.json' with { type: 'json' };
 
@@ -77,4 +77,35 @@ describe('solver.js — shipped levels.json regression', () => {
             });
         }
     }
+});
+
+describe('findHint — Hint button support', () => {
+    test('from an empty board, returns a legal placement of one of the pieces (largest first)', () => {
+        const grid = new Grid(2, 3);
+        const hint = findHint(grid, ['domino_h', 'tri_i', 'dot']); // 2+3+1 = the 6 open cells
+        assert.ok(hint, 'a solvable board must yield a hint');
+        assert.equal(hint.shapeId, 'tri_i', 'the largest piece is the one hinted');
+        assert.ok(grid.canPlace(hint.shapeId, hint.row, hint.col), 'the hinted placement must be legal');
+        assert.equal(grid.placements.size, 0, 'findHint must leave the grid untouched');
+    });
+
+    test('respects the pieces already on the board and only reports unplaced pieces', () => {
+        const grid = new Grid(2, 3);
+        grid.place('player-1', 'tri_i', 0, 0); // top row filled; only the bottom row is left.
+        const hint = findHint(grid, ['domino_h', 'dot']);
+        assert.ok(hint);
+        assert.equal(hint.shapeId, 'domino_h');
+        assert.equal(hint.row, 1, 'must go in the still-empty bottom row');
+        assert.equal(grid.placements.size, 1, 'the player\'s piece is still the only thing on the grid');
+    });
+
+    test('returns null when the existing placements make the board unsolvable', () => {
+        const grid = new Grid(1, 4);
+        grid.place('player-1', 'dot', 0, 1); // splits the open cells into a lone cell (col 0) and a pair (cols 2-3).
+        assert.equal(findHint(grid, ['tri_i']), null, 'a 3-in-a-row piece can no longer fit anywhere');
+    });
+
+    test('returns null when there are no pieces left to hint', () => {
+        assert.equal(findHint(new Grid(1, 1), []), null);
+    });
 });
