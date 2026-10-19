@@ -101,13 +101,17 @@ Log.
   - [x] Workday/shift-complete screen (`ShiftCompleteScene.js`)
   - [x] Multi-level sequential flow (all of `levels.json` = one shift)
 
-- [x] **Milestones 9.1-9.6 — Post-M9 additions** (done 2026-10-15/16; added to ROADMAP.md)
+- [x] **Milestones 9.1-9.10 — Post-M9 additions** (done 2026-10-15/20; added to ROADMAP.md)
   - [x] 9.1 Title screen, day flow & persistent pay count
   - [x] 9.2 30 generated levels (3 / 4 / 5 / 6 trucks per day)
   - [x] 9.3 Portrait / square boards
   - [x] 9.4 Hint button (highlight-only)
   - [x] 9.5 Shop UI (placeholder tabs/items)
   - [x] 9.6 Apartment UI (grid placement, ghost, 2.5D room)
+  - [x] 9.7 Shape-gated puzzle pool (800 puzzles)
+  - [x] 9.8 Shape progression in gameplay (the game plays the pool)
+  - [x] 9.9 Rotating puzzles, free piece movement (no Undo), new-piece popup
+  - [x] 9.10 Simpler shop (no tabs/clothing), new economy, end-of-day report
 
 - [ ] **Milestone 10 — Visual Polish & Audio**
   - [ ] Sprite-based rendering
@@ -574,3 +578,132 @@ Log.
   undo restores it; on a dead end the placements are untouched and the highlight overlays the
   wrong piece (2 cells overlapped); winning clears it. 256 tests pass.
   The roadmap now has Milestones 9.1-9.6 recording all of the post-M9 work.
+
+- 2026-10-20 — **Shape-gated puzzle pool** (new data only; the game still plays levels.json).
+  Requested so complex shapes only appear in later levels. Unlock plan (`SHAPE_UNLOCKS` in
+  scripts/generate-levels.js): levels 1-2 simple shapes only (dot, domino_h, domino_v, tri_i,
+  square, bar4); level 3 adds tri_l + l4; level 8 t4; level 13 s4; level 18 p5; level 23 plus
+  (the order of the last four was my recommendation, confirmed). A shape unlocked at level N
+  can be used from N onwards. Decisions:
+  - **Separate file**, `src/data/levels.shapes.json`, so the live levels.json is untouched.
+    Verified: regenerating levels.json after the generator refactor is byte-identical.
+  - **Same structure as before:** same trucks per day and easy/medium/hard order (1: eee;
+    2-7: eemm; 8-12: eemmh; 13-30: eemmhh), same scoring and reward formula.
+  - **Pools:** every truck slot holds 5 distinct puzzles (800 total), the 5 closest to the
+    slot's target difficulty out of ~50 acceptable candidates. The order within a slot is by
+    score; ordering across slots is by label only, not exact score.
+  - **Introduction guarantee:** at levels 3/8/13/18/23 every puzzle must contain at least one
+    newly introduced shape (new shapes are also 3x more likely there, and these slots may use
+    a wider range of board sizes since e.g. the plus needs a 3x3 area). Level 3 shows both
+    tri_l and l4 across its pool.
+  - **Honest caveats:** (1) 33 slots could not meet the "few solutions" rule (hard <= 3,
+    medium <= 5) and relaxed it - expected for levels 1-7, where simple pieces allow many
+    arrangements; the generator prints these as warnings. (2) Dots are still common in these
+    puzzles (up to 2 per puzzle, as before). (3) Late levels use the newest shapes at normal
+    weight, so e.g. s4 and plus are rare by level 30 (about 6 of 30 puzzles each).
+  - **Code:** the generator takes an optional `ShapeRules` object (allowed / boost /
+    requireOneOf) threaded through weightsFor, makeCandidate and the new findBestPuzzles;
+    `loadShapeLevels` (src/data/loadLevel.js) validates the file; `validate-levels.js
+    --shapes` solves all 800; tests/data/shapeLevels.test.js (17 tests) checks the unlock
+    levels, that no puzzle uses a shape early, the introduction rule, pool size, labels,
+    portrait boards, uniqueness and solvability. 272 tests pass.
+  - **Next:** nothing reads the pool yet. Wiring it in means the game picking one puzzle per
+    slot from a level's pool (random, rotating, or by player history) - not decided.
+
+- 2026-10-20 — **The game now plays the shape-gated puzzles** (Milestone 9.8). PuzzleScene reads
+  `levels.shapes.json` (validated with `loadShapeLevels`) instead of `levels.json`. Still 30
+  levels, same trucks per day and easy/medium/hard order, so the rules are unchanged; what is new
+  is which shapes can appear (levels 1-2 simple only; tri_l + l4 from 3; t4 from 8; s4 from 13;
+  p5 from 18; plus from 23). Decisions:
+  - **Choosing from the pools** (I flagged this as undecided; this is my pick): when a day starts,
+    `pickDayPuzzles` (src/data/pickDayPuzzles.js) picks one random puzzle per truck slot, so
+    replaying a level gives different puzzles. The day's picks are then **sorted by difficulty
+    score** - two slots with the same label overlap in difficulty, and without the sort a random
+    draw could give a harder puzzle before an easier one. Labels sit in separate score bands, so
+    easy -> medium -> hard order is kept too.
+  - **Remembered for the day:** the picks live in the registry (`dayPuzzles`, with the level they
+    belong to), because every truck is a fresh PuzzleScene; re-picking would change the puzzle
+    for a truck on every restart. Picked again at truck 1, or when the stored picks belong to a
+    different level (e.g. a debug jump into the middle of a day).
+  - **levels.json is no longer played.** It is kept as the original reference set (generator
+    default output, validator, tests); `levels.shapes.json` is the file the game uses.
+  - **Verified in the browser:** Play -> two full days via the real flow (7 different puzzles,
+    each from its slot's pool, only unlocked shapes, headers correct); restarting a mid-day truck
+    gives the same puzzle; every introduction level (3, 8, 13, 18, 23) shows its new shape in
+    every truck, with the right easy/medium/hard order; no console errors. 279 tests pass (7 new
+    for pickDayPuzzles).
+
+- 2026-10-20 — **Rotation, free piece movement, new-piece popup** (Milestone 9.9).
+  - **Rotation replaces random picking** (supersedes the 9.8 entry): `pickDayPuzzles(level,
+    playNumber)` is now deterministic - play 0 takes the first puzzle of every pool, play 1 the
+    second, ... wrapping per pool. `PuzzleScene.getDayPuzzles` counts plays per level in the
+    registry (`levelPlayCounts`), bumped once when a day starts (truck 1); the day's picks are
+    still stored for the rest of the day. The count is **not** reset by Play on the title
+    screen (otherwise every new game would start with the same puzzles); it does reset when the
+    page is reloaded, since nothing is saved to disk yet. Pools are stored easiest to hardest,
+    so successive plays get very slightly harder; days are still sorted by score.
+  - **Dragging placed pieces:** a placed piece can be grabbed again. On pick-up it is taken off
+    the Grid immediately (so its own cells don't block its new spot). Dropped on a legal spot ->
+    placed there. Dropped away from the board (the way to take a piece off) -> back to its tray
+    slot. Dropped over the board but somewhere illegal -> **snaps back to where it was** (my
+    judgment call: a slip shouldn't cost a placement; a tray piece dropped illegally still just
+    returns to the tray). Reset (clear the whole board) and Pause stay; pausing now disables
+    placed pieces too.
+  - **Undo removed**, as requested; `PlacementHistory.js` deleted (Reset now loops over the
+    pieces instead of replaying a history). This supersedes the Undo part of Milestone 7. HUD
+    buttons moved up: Reset, Pause, Hint.
+  - **Exact hit areas for placed pieces:** a bounding box (let alone a padded one) would let
+    neighbouring pieces steal each other's clicks - an L piece's box covers the notch another
+    piece sits in. `PieceView` now sets its hit area once, with a test that checks `isPlaced` each
+    time: padded box in the tray, the piece's own cells on the board. (Phaser keeps the first
+    hit area it is given, so swapping it on the fly would not have worked.) `lockInPlace` became
+    `markPlaced(row, col)`, which also records `boardOrigin` for the snap-back.
+  - **Hint interaction:** the hint highlight reappears if the hinted piece is lifted off the
+    board (and on Reset), and clears once it is placed there again.
+  - **New-piece popup** (`src/game/objects/NewPieceIntro.js`): shown at the start of the first
+    truck of levels 3, 8, 13, 18 and 23 only. Pops in over 450 ms with a Back.easeOut overshoot
+    (measured peak scale about 1.1), holds 2 s (first built at 3 s, shortened on request), shrinks away over 300 ms with Back.easeIn - about
+    2.75 s in total - and a full-screen dimming blocker swallows all input meanwhile (no
+    skip-by-click; not requested). It shows each new shape in its tray colour with a name (new
+    `SHAPE_NAMES` / `getShapeName` in core/Shape.js: Corner, L-piece, T-piece, Zig-zag, P-piece,
+    Plus). It replays whenever such a level starts again.
+  - **Verified in the browser** (real mouse drags): rotation 1,2,3,4,5,1 across six plays; no Undo
+    button (HUD: Reset, Pause, Hint); a placed piece moved to a new cell; dragged off the board
+    back to the tray; dropped on another piece it snapped back; pressing a piece sitting in an L
+    piece's notch lifted the notch piece, not the L; paused pieces not draggable and draggable
+    again after resume; Reset clears the board; hint highlight returns on lift-off; popup
+    overshoot, duration, and blocked input confirmed; no popup on levels 1, 2, 4 or on a later
+    truck; no console errors. 286 tests pass (new: rotation tests, shape names).
+
+- 2026-10-20 — **Shop simplified, economy changed, end-of-day report** (Milestone 9.10).
+  - **Shop:** no tabs and no clothing - the shop only sells apartment items. `shop.json` is now
+    `{ items: [...] }` (8 placeholder boxes labelled "Apartment Item N"); `loadShop` and its tests
+    updated; ShopScene is one grid. This also removes clothing from the future plans (ROADMAP
+    "Future" no longer mentions equipping clothes). The Accessories/Decor tabs went too, since
+    "no category tabs are needed".
+  - **Economy:** a truck pays $10 easy / $15 medium / $35 hard. It is set once in the generator
+    (`REWARD_BY_DIFFICULTY`) and written into every puzzle's `reward`, replacing the old
+    "open cells + 0/4/8" formula. Both data files were regenerated; puzzle content is unchanged
+    (rewards are not part of the generator's randomness) - only `reward` values changed, plus
+    the new level `bonuses` field in levels.shapes.json.
+  - **First-day bonus:** +$10 at the end of level 1, as data (`bonuses: [{ id, label, amount }]`
+    on a level, `LEVEL_BONUSES` in the generator, validated by `loadShapeLevels`). Level 1 is
+    always 3 easy trucks, so day 1 = $30 + $10 = **$40** whichever puzzles are dealt (tested).
+    The bonus is paid once, in `PuzzleScene.handleWin` when the day's last truck is done, and
+    goes into both the day's earnings and the coin counter. The legacy levels.json has no
+    bonuses (it is no longer played).
+  - **End-of-day popup** (`DayCompleteScene`): header Adequate Parcel Service / "Arrives Intact,
+    Mostly" / "OUTBOUND PACKING DEPARTMENT" (smaller; my pick for the job title - one line in
+    `src/data/company.json` to change), then a payslip-style list: trucks completed; if the day
+    has bonuses, truck earnings and each bonus (+$, green); then **Total earned today**. On days
+    without a bonus the list is just trucks completed + total (otherwise "truck earnings" and
+    "total" would repeat the same number). The "Total earned (all-time)" line was dropped to
+    match the content you listed; the coin counter behind the popup still shows the wallet. The
+    panel sizes itself to its rows. "Level N complete" stays as a small line under the header.
+  - **Verified in the browser** (real flow from the title screen, real clicks): day 1 trucks paid
+    $10 each (HUD $10, $20, then $40 once the bonus landed); the day-1 popup showed 3 trucks,
+    $30 truck earnings, +$10 first day bonus, $40 total; day 2 paid $10 + $10 + $15 + $15 = $50
+    (popup: 4 trucks, $50, no bonus row; HUD $90); the shop showed 8 boxes and no tabs, and Back
+    returned to the same popup; level 30 shows the "every level" note with Finish; no console
+    errors. Puzzle content in both data files is unchanged (checked: identical apart from
+    reward/bonuses). 292 tests pass (new: economy and bonus tests, shop tests rewritten).

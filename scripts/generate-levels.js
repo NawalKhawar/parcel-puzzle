@@ -20,8 +20,18 @@
  *   4. Within a level the trucks are sorted by score, so difficulty only ever goes up
  *      during a day. Output is deterministic (seeded PRNG): re-running gives the same file.
  *
- * Usage: node scripts/generate-levels.js
- * Afterwards run `node scripts/validate-levels.js` (and `npm test`) to double-check.
+ * Usage:
+ *   node scripts/generate-levels.js                      rebuilds src/data/levels.json
+ *   node scripts/generate-levels.js --shape-gated        builds src/data/levels.shapes.json
+ *   node scripts/generate-levels.js --shape-gated --pool=8   (puzzles per truck slot; default 5)
+ * Afterwards run `node scripts/validate-levels.js` (add `--shapes` for the second file) and
+ * `npm test` to double-check.
+ *
+ * SHAPE-GATED MODE. A second data set with the same level structure (same trucks per day,
+ * same easy/medium/hard mix) but where the piece shapes are introduced gradually: levels 1-2
+ * use only the simple shapes, level 3 adds tri_l and l4, and levels 8, 13, 18 and 23 add one
+ * more shape each (see SHAPE_UNLOCKS). Every truck slot gets a POOL of several different
+ * puzzles to choose from. The normal levels.json is not touched by this mode.
  *
  * Plain Node script - must never import 'phaser' (see "Architectural boundary" in
  * PROJECT_STRUCTURE.md).
@@ -33,11 +43,12 @@ import path from 'node:path';
 
 import { Grid } from '../src/core/Grid.js';
 import { getShapeCells } from '../src/core/Shape.js';
-import { loadLevels } from '../src/data/loadLevel.js';
+import { loadLevels, loadShapeLevels } from '../src/data/loadLevel.js';
 import { solve } from '../src/core/Solver.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_PATH = path.resolve(__dirname, '../src/data/levels.json');
+const SHAPES_OUTPUT_PATH = path.resolve(__dirname, '../src/data/levels.shapes.json');
 
 // ---------------------------------------------------------------------------
 // Level plan: how many trucks per level, and how hard each one should be.
@@ -218,15 +229,32 @@ const REGULAR_SHAPES = new Set(['dot', 'domino_h', 'domino_v', 'tri_i', 'square'
 const MAX_PIECES = 9;
 
 /**
- * Interpolates the easy/hard shape weights for a target difficulty.
+ * @typedef {Object} ShapeRules
+ * @property {Set<string>} allowed - the only shapes a puzzle may use.
+ * @property {Set<string>} boost - newly introduced shapes, made more likely so they show up.
+ * @property {string[] | null} requireOneOf - if set, every puzzle must contain at least one of these.
+ */
+
+/**
+ * Interpolates the easy/hard shape weights for a target difficulty. With shape rules (the
+ * shape-gated mode) shapes that aren't allowed get weight 0 - they can never be picked - and
+ * newly introduced shapes get a boost so the player actually meets them.
  *
  * @param {number} t
+ * @param {ShapeRules | null} [rules] - null/omitted means every shape is allowed.
  * @returns {Record<string, number>}
  */
-function weightsFor(t) {
+function weightsFor(t, rules = null) {
     const weights = {};
     for (const id of Object.keys(EASY_WEIGHTS)) {
         weights[id] = lerp(EASY_WEIGHTS[id], HARD_WEIGHTS[id], t);
+        if (rules) {
+            if (!rules.allowed.has(id)) {
+                weights[id] = 0;
+            } else if (rules.boost.has(id)) {
+                weights[id] *= NEW_SHAPE_BOOST;
+            }
+        }
     }
     return weights;
 }
@@ -255,9 +283,12 @@ const BOARD_SIZES = [
  *
  * @param {number} t
  * @param {() => number} rng
+ * @param {number} [slack] - how many cells further from the ideal open-cell count a board may be
+ *   and still be considered. 2 normally; the shape-gated mode widens it when a puzzle must
+ *   contain a big new shape (e.g. the plus needs a 3x3 area), which small boards can't offer.
  * @returns {{rows: number, cols: number, blockedCount: number}}
  */
-function pickBoard(t, rng) {
+function pickBoard(t, rng, slack = 2) {
     const targetOpen = Math.round(8 + 22 * t);
     const blockedCount = t < 0.12 ? 0 : Math.round(t * 4);
     const minCols = t < 0.15 ? 2 : t < 0.45 ? 3 : 4;
@@ -269,9 +300,9 @@ function pickBoard(t, rng) {
         distance: Math.abs(rows * cols - blockedCount - targetOpen),
     }));
     const best = Math.min(...options.map((o) => o.distance));
-    // Anything within 2 cells of the best fit is fair game; choosing randomly among them
+    // Anything within `slack` cells of the best fit is fair game; choosing randomly among them
     // gives variety (e.g. a 5x4 vs a 7x3) instead of always the same board for a given t.
-    const close = options.filter((o) => o.distance <= best + 2);
+    const close = options.filter((o) => o.distance <= best + slack);
     const pick = close[Math.floor(rng() * close.length)];
     return { rows: pick.rows, cols: pick.cols, blockedCount };
 }
@@ -415,11 +446,12 @@ function signature(puzzle) {
  *
  * @param {number} t - target difficulty.
  * @param {() => number} rng
+ * @param {ShapeRules | null} [rules] - shape restrictions (shape-gated mode), or null for none.
  * @returns {null | {rows: number, cols: number, blocked: Array<[number, number]>, pieces: string[], score: number, solutionCount: number}}
  *   null if the attempt was unusable (couldn't be tiled, too many pieces, or too slow to solve).
  */
-function makeCandidate(t, rng) {
-    const { rows, cols, blockedCount } = pickBoard(t, rng);
+function makeCandidate(t, rng, rules = null) {
+    const { rows, cols, blockedCount } = pickBoard(t, rng, rules && rules.requireOneOf ? 6 : 2);
 
     // Choose which cells are blocked: random distinct cells.
     const allCells = [];
@@ -431,7 +463,7 @@ function makeCandidate(t, rng) {
     const blocked = shuffle(allCells, rng).slice(0, blockedCount);
 
     const maxDots = t < 0.67 ? 2 : 1;
-    const tiled = randomTiling(rows, cols, blocked, weightsFor(t), maxDots, rng);
+    const tiled = randomTiling(rows, cols, blocked, weightsFor(t, rules), maxDots, rng);
     if (!tiled || tiled.length < 2 || tiled.length > MAX_PIECES) {
         return null;
     }
@@ -452,31 +484,34 @@ function makeCandidate(t, rng) {
 }
 
 /**
- * Searches for the best puzzle for one truck slot: generates candidates until it has
- * enough acceptable ones, then returns the one whose score is closest to `t`.
+ * Searches for the best puzzles for one truck slot: generates candidates until it has
+ * enough acceptable ones, then returns the `count` whose scores are closest to `t`.
  *
  * "Acceptable" means: its easy/medium/hard label matches the label `t` calls for (so a
- * truck meant to be medium can't accidentally come out hard), it isn't a duplicate, and
- * harder puzzles must not have lots of different solutions (many solutions = easy to
- * stumble onto one). If the solution-count rule can't be met after many tries it is
- * relaxed rather than looping forever (a warning is printed).
+ * truck meant to be medium can't accidentally come out hard), it isn't a duplicate, it
+ * contains a newly introduced shape when the shape rules demand one, and harder puzzles
+ * must not have lots of different solutions (many solutions = easy to stumble onto one).
+ * If the solution-count rule can't be met after many tries it is relaxed rather than
+ * looping forever (a warning is printed).
  *
  * @param {number} t - target difficulty.
  * @param {() => number} rng
- * @param {Set<string>} seen - signatures of puzzles already used (mutated: the winner is added).
- * @returns {{rows: number, cols: number, blocked: Array<[number, number]>, pieces: string[], score: number, solutionCount: number, relaxed: boolean}}
+ * @param {Set<string>} seen - signatures of puzzles already used (mutated: the winners are added).
+ * @param {ShapeRules | null} [rules] - shape restrictions (shape-gated mode), or null for none.
+ * @param {number} [count] - how many puzzles to return (the pool size); 1 for the normal levels.
+ * @returns {{puzzles: Array<{rows: number, cols: number, blocked: Array<[number, number]>, pieces: string[], score: number, solutionCount: number}>, relaxed: boolean}}
+ *   fewer than `count` puzzles only if the attempt limit ran out first.
  */
-function findBestPuzzle(t, rng, seen) {
+function findBestPuzzles(t, rng, seen, rules = null, count = 1) {
     const wantedLabel = labelOf(t);
     // Max distinct solutions allowed per label; 7 means "no limit" (the solver cap).
     const maxSolutions = { easy: 7, medium: 5, hard: 3 }[wantedLabel];
 
-    const ENOUGH = 40; // acceptable candidates to compare before picking a winner.
+    const ENOUGH = Math.max(40, count * 10); // acceptable candidates to compare before picking winners.
     const GIVE_UP_STRICT = 600; // attempts before relaxing the solution-count rule.
-    const HARD_STOP = 3000; // attempts before failing outright.
+    const HARD_STOP = 3000; // attempts before giving up.
 
-    let best = null;
-    let acceptable = 0;
+    const acceptable = [];
     let relaxed = false;
 
     for (let attempt = 1; attempt <= HARD_STOP; attempt++) {
@@ -485,32 +520,62 @@ function findBestPuzzle(t, rng, seen) {
             relaxed = true;
         }
 
-        const candidate = makeCandidate(t, rng);
+        const candidate = makeCandidate(t, rng, rules);
         if (!candidate) continue;
         if (labelOf(candidate.score) !== wantedLabel) continue;
         if (strict && candidate.solutionCount > maxSolutions) continue;
+        if (rules && rules.requireOneOf && !candidate.pieces.some((id) => rules.requireOneOf.includes(id))) continue;
         if (seen.has(signature(candidate))) continue;
+        // When returning several puzzles, two from this same search must not be identical
+        // either. (Skipped for a single puzzle: duplicates can't matter there, and checking
+        // would change when the search stops, and so which puzzle the normal levels get.)
+        if (count > 1 && acceptable.some((other) => signature(other) === signature(candidate))) continue;
 
-        acceptable++;
-        if (!best || Math.abs(candidate.score - t) < Math.abs(best.score - t)) {
-            best = candidate;
-        }
-        if (acceptable >= ENOUGH) break;
+        acceptable.push(candidate);
+        if (acceptable.length >= ENOUGH) break;
     }
 
-    if (!best) {
+    if (acceptable.length === 0) {
         throw new Error(`Could not generate a "${wantedLabel}" puzzle for target difficulty ${t.toFixed(2)}`);
     }
-    seen.add(signature(best));
-    return { ...best, relaxed };
+
+    // Closest to the target first. The sort is stable, so ties keep generation order - for
+    // count = 1 this picks exactly the same puzzle the original single-best search did.
+    const puzzles = [...acceptable].sort((x, y) => Math.abs(x.score - t) - Math.abs(y.score - t)).slice(0, count);
+    for (const puzzle of puzzles) {
+        seen.add(signature(puzzle));
+    }
+    return { puzzles, relaxed };
+}
+
+/**
+ * The normal-levels search: the single best puzzle for a slot, with no shape restrictions.
+ *
+ * @param {number} t - target difficulty.
+ * @param {() => number} rng
+ * @param {Set<string>} seen - signatures already used (mutated).
+ * @returns {{rows: number, cols: number, blocked: Array<[number, number]>, pieces: string[], score: number, solutionCount: number, relaxed: boolean}}
+ */
+function findBestPuzzle(t, rng, seen) {
+    const { puzzles, relaxed } = findBestPuzzles(t, rng, seen, null, 1);
+    return { ...puzzles[0], relaxed };
 }
 
 // ---------------------------------------------------------------------------
 // Assembly + output.
 // ---------------------------------------------------------------------------
 
-/** Coins bonus added on top of a truck's open-cell count, by difficulty label. */
-const REWARD_BONUS = { easy: 0, medium: 4, hard: 8 };
+/** What a truck pays, by difficulty label. This is the game's economy for packing work. */
+const REWARD_BY_DIFFICULTY = { easy: 10, medium: 15, hard: 35 };
+
+/**
+ * One-off bonuses paid at the END of a level, shown on the end-of-day popup (shape-gated data
+ * only). Keyed by 1-based level number. Day 1 pays a $10 first-day bonus, so with its three
+ * easy trucks ($30) the player has $40 after the first day.
+ */
+const LEVEL_BONUSES = {
+    1: [{ id: 'first-day', label: 'First day bonus', amount: 10 }],
+};
 
 /**
  * Builds the whole level list.
@@ -546,7 +611,6 @@ function generateAll() {
             id: levelId,
             trucks: puzzles.map((puzzle, index) => {
                 const difficulty = labelOf(puzzle.score);
-                const open = puzzle.rows * puzzle.cols - puzzle.blocked.length;
                 return {
                     id: `${levelId}-truck-${index + 1}`,
                     rows: puzzle.rows,
@@ -555,7 +619,7 @@ function generateAll() {
                     pieces: puzzle.pieces,
                     difficulty,
                     difficultyScore: Math.round(puzzle.score * 100) / 100,
-                    reward: open + REWARD_BONUS[difficulty],
+                    reward: REWARD_BY_DIFFICULTY[difficulty],
                 };
             }),
         });
@@ -596,6 +660,177 @@ function formatLevels(levels) {
     return lines.join('\n') + '\n';
 }
 
+// ---------------------------------------------------------------------------
+// Shape-gated progression (second data set: levels.shapes.json).
+// ---------------------------------------------------------------------------
+
+/** The simple shapes every level may use: the ones a player reads as plain rectangles. */
+const SIMPLE_SHAPES = ['dot', 'domino_h', 'domino_v', 'tri_i', 'square', 'bar4'];
+
+/**
+ * When each irregular shape is introduced. A shape unlocked at level N may be used from
+ * level N onwards. Levels 1-2 therefore use only SIMPLE_SHAPES. This is THE shape-progression
+ * plan - edit it and re-run with --shape-gated to change when shapes arrive.
+ */
+const SHAPE_UNLOCKS = [
+    { level: 3, shapes: ['tri_l', 'l4'] },
+    { level: 8, shapes: ['t4'] },
+    { level: 13, shapes: ['s4'] },
+    { level: 18, shapes: ['p5'] },
+    { level: 23, shapes: ['plus'] },
+];
+
+/** How much more likely a newly introduced shape is than usual, so the level that introduces it shows it off. */
+const NEW_SHAPE_BOOST = 3;
+
+/** Default number of alternative puzzles generated for each truck slot. */
+const DEFAULT_POOL_SIZE = 5;
+
+/**
+ * Every shape a level may use: the simple ones plus everything unlocked so far.
+ *
+ * @param {number} levelNumber - 1-based.
+ * @returns {string[]}
+ */
+function shapesForLevel(levelNumber) {
+    const unlocked = SHAPE_UNLOCKS.filter((unlock) => unlock.level <= levelNumber).flatMap((unlock) => unlock.shapes);
+    return [...SIMPLE_SHAPES, ...unlocked];
+}
+
+/**
+ * The shapes introduced AT this exact level (empty for most levels).
+ *
+ * @param {number} levelNumber - 1-based.
+ * @returns {string[]}
+ */
+function newShapesAtLevel(levelNumber) {
+    const unlock = SHAPE_UNLOCKS.find((entry) => entry.level === levelNumber);
+    return unlock ? unlock.shapes : [];
+}
+
+/**
+ * Builds the shape-gated data set: the same levels and trucks as the normal plan (so the same
+ * number of trucks per day and the same easy/medium/hard mix), but every truck slot holds a
+ * pool of `poolSize` different puzzles that only use the shapes unlocked by that level. At a
+ * level that introduces new shapes, every puzzle contains at least one of them.
+ *
+ * @param {number} poolSize - puzzles per truck slot.
+ * @returns {{levels: Array<Object>, warnings: string[]}}
+ */
+function generateShapeGated(poolSize) {
+    const seen = new Set();
+    const warnings = [];
+    const levels = [];
+
+    for (let levelNumber = 1; levelNumber <= LEVEL_COUNT; levelNumber++) {
+        const labels = labelsForLevel(levelNumber);
+        const allowedShapes = shapesForLevel(levelNumber);
+        const newShapes = newShapesAtLevel(levelNumber);
+        const rules = {
+            allowed: new Set(allowedShapes),
+            boost: new Set(newShapes),
+            requireOneOf: newShapes.length > 0 ? newShapes : null,
+        };
+        const levelId = `level-${String(levelNumber).padStart(2, '0')}`;
+
+        const trucks = labels.map((label, truckIndex) => {
+            const t = targetDifficulty(levelNumber, truckIndex);
+            // A seed range of its own, so this data set's randomness is independent of levels.json.
+            const rng = makeRng(7000000 + levelNumber * 1000 + truckIndex + 1);
+            const found = findBestPuzzles(t, rng, seen, rules, poolSize);
+            const slotName = `level ${levelNumber} truck ${truckIndex + 1}`;
+            if (found.relaxed) {
+                warnings.push(`${slotName}: solution-count rule relaxed`);
+            }
+            if (found.puzzles.length < poolSize) {
+                warnings.push(`${slotName}: only ${found.puzzles.length} of ${poolSize} puzzles found`);
+            }
+
+            const truckId = `${levelId}-truck-${truckIndex + 1}`;
+            const puzzles = found.puzzles
+                .sort((x, y) => x.score - y.score)
+                .map((puzzle, index) => {
+                    return {
+                        id: `${truckId}-p${index + 1}`,
+                        rows: puzzle.rows,
+                        cols: puzzle.cols,
+                        blocked: puzzle.blocked.sort((x, y) => x[0] - y[0] || x[1] - y[1]),
+                        pieces: puzzle.pieces,
+                        difficulty: label,
+                        difficultyScore: Math.round(puzzle.score * 100) / 100,
+                        reward: REWARD_BY_DIFFICULTY[label],
+                    };
+                });
+            return { id: truckId, difficulty: label, puzzles };
+        });
+
+        levels.push({ id: levelId, newShapes, allowedShapes, bonuses: LEVEL_BONUSES[levelNumber] ?? [], trucks });
+    }
+    return { levels, warnings };
+}
+
+/**
+ * Serializes the shape-gated data with one puzzle per line (so ~800 puzzles stay readable).
+ *
+ * @param {Array<Object>} levels
+ * @returns {string}
+ */
+function formatShapeLevels(levels) {
+    const inline = (value) => JSON.stringify(value).replace(/,/g, ', ');
+    const lines = ['['];
+    levels.forEach((level, li) => {
+        lines.push('  {');
+        lines.push(`    "id": ${JSON.stringify(level.id)},`);
+        lines.push(`    "newShapes": ${inline(level.newShapes)},`);
+        lines.push(`    "allowedShapes": ${inline(level.allowedShapes)},`);
+        lines.push(`    "bonuses": ${inline(level.bonuses)},`);
+        lines.push('    "trucks": [');
+        level.trucks.forEach((truck, ti) => {
+            lines.push('      {');
+            lines.push(`        "id": ${JSON.stringify(truck.id)},`);
+            lines.push(`        "difficulty": ${JSON.stringify(truck.difficulty)},`);
+            lines.push('        "puzzles": [');
+            truck.puzzles.forEach((puzzle, pi) => {
+                lines.push(`          ${inline(puzzle)}${pi < truck.puzzles.length - 1 ? ',' : ''}`);
+            });
+            lines.push('        ]');
+            lines.push(ti < level.trucks.length - 1 ? '      },' : '      }');
+        });
+        lines.push('    ]');
+        lines.push(li < levels.length - 1 ? '  },' : '  }');
+    });
+    lines.push(']');
+    return lines.join('\n') + '\n';
+}
+
+async function mainShapeGated() {
+    const started = Date.now();
+    const poolArg = process.argv.find((arg) => arg.startsWith('--pool='));
+    const poolSize = poolArg ? Number.parseInt(poolArg.slice('--pool='.length), 10) : DEFAULT_POOL_SIZE;
+    if (!Number.isInteger(poolSize) || poolSize < 1) {
+        throw new Error(`--pool must be a positive whole number (got ${poolArg})`);
+    }
+
+    const { levels, warnings } = generateShapeGated(poolSize);
+
+    // Same gate the game's loaders use: structure, shape ids, cell counts, unique ids...
+    loadShapeLevels(levels);
+
+    await writeFile(SHAPES_OUTPUT_PATH, formatShapeLevels(levels), 'utf8');
+
+    const puzzleTotal = levels.reduce((sum, level) => sum + level.trucks.reduce((n, truck) => n + truck.puzzles.length, 0), 0);
+    console.log(`Wrote ${levels.length} levels / ${puzzleTotal} puzzles (${poolSize} per truck slot) to ${path.relative(process.cwd(), SHAPES_OUTPUT_PATH)} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    for (const level of levels) {
+        const labels = level.trucks.map((truck) => truck.difficulty[0]).join('');
+        const intro = level.newShapes.length > 0 ? `  NEW: ${level.newShapes.join(', ')}` : '';
+        console.log(`  ${level.id}: ${labels.padEnd(7)} ${level.allowedShapes.length} shapes${intro}`);
+    }
+    if (warnings.length > 0) {
+        console.warn(`\nWarnings (${warnings.length}):`);
+        for (const w of warnings) console.warn(`  - ${w}`);
+    }
+}
+
 async function main() {
     const started = Date.now();
     const { levels, warnings } = generateAll();
@@ -617,4 +852,7 @@ async function main() {
     }
 }
 
-main();
+(process.argv.includes('--shape-gated') ? mainShapeGated() : main()).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

@@ -2,8 +2,8 @@
  * apartment.test.js
  *
  * Tests for src/data/loadApartment.js: the validation rules, plus checks that the shipped
- * apartment.json (furniture catalog) and shop.json (tabs) match what the design asks for -
- * placeholder furniture of several different sizes, and three shop tabs in the right order.
+ * apartment.json (furniture catalog) and shop.json (items) match what the design asks for -
+ * placeholder furniture of several different sizes, and a shop that is a single list of items.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -62,21 +62,17 @@ describe('shipped apartment.json', () => {
 });
 
 describe('loadShop and the shipped shop.json', () => {
-    test('rejects missing tabs, duplicate ids, and unlabelled tabs/items', () => {
-        assert.throws(() => loadShop({ tabs: [] }), /tabs/);
-        assert.throws(() => loadShop({ tabs: [{ id: 't', label: '', items: [] }] }), /label/);
-        assert.throws(() => loadShop({ tabs: [{ id: 't', label: 'T', items: [{ id: 'x', name: '' }] }] }), /name/);
-        assert.throws(
-            () => loadShop({ tabs: [{ id: 't', label: 'T', items: [{ id: 'x', name: 'X' }, { id: 'x', name: 'Y' }] }] }),
-            /Duplicate/
-        );
+    test('rejects missing items, duplicate ids, and unnamed items', () => {
+        assert.throws(() => loadShop({ items: [] }), /items/);
+        assert.throws(() => loadShop({}), /items/);
+        assert.throws(() => loadShop({ items: [{ id: 'x', name: '' }] }), /name/);
+        assert.throws(() => loadShop({ items: [{ id: 'x', name: 'X' }, { id: 'x', name: 'Y' }] }), /Duplicate/);
     });
 
-    test('has exactly three tabs - Clothes, Accessories, Decor - in that order, each with labelled items', () => {
+    test('the shop is one flat list of labelled items: no clothes, and no category tabs', () => {
         const shop = loadShop(shopRaw);
-        assert.deepEqual(shop.tabs.map((tab) => tab.label), ['Clothes', 'Accessories', 'Decor']);
-        for (const tab of shop.tabs) {
-            assert.ok(tab.items.length > 0, `${tab.label} needs placeholder items`);
-        }
+        assert.ok(shop.items.length > 0, 'needs placeholder items');
+        assert.equal(shop.tabs, undefined, 'the shop has no category tabs');
+        assert.ok(!JSON.stringify(shop).toLowerCase().includes('cloth'), 'the shop does not sell clothes');
     });
 });

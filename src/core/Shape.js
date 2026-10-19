@@ -194,3 +194,39 @@ export function listShapeIds() {
 export function isKnownShape(shapeId) {
     return Object.prototype.hasOwnProperty.call(SHAPES, shapeId);
 }
+
+/**
+ * Player-facing names for every shape, for UI text such as the "new piece" popup. Kept next to
+ * the shape definitions so adding a shape in SHAPES is one place to remember (a test fails if a
+ * shape has no name).
+ *
+ * @type {Readonly<Record<string, string>>}
+ */
+export const SHAPE_NAMES = Object.freeze({
+    dot: 'Dot',
+    domino_h: 'Domino',
+    domino_v: 'Domino',
+    tri_i: 'Straight 3',
+    tri_l: 'Corner',
+    square: 'Square',
+    bar4: 'Straight 4',
+    l4: 'L-piece',
+    t4: 'T-piece',
+    s4: 'Zig-zag',
+    p5: 'P-piece',
+    plus: 'Plus',
+});
+
+/**
+ * The player-facing name of a shape (e.g. 'tri_l' -> 'Corner').
+ *
+ * @param {string} shapeId
+ * @returns {string}
+ * @throws {Error} if shapeId is not a recognized shape.
+ */
+export function getShapeName(shapeId) {
+    if (!isKnownShape(shapeId)) {
+        throw new Error(`Unknown shape id: "${shapeId}". Known shapes: ${listShapeIds().join(', ')}`);
+    }
+    return SHAPE_NAMES[shapeId] ?? shapeId;
+}

@@ -1,12 +1,13 @@
 import { Scene } from 'phaser';
 
-import { loadLevels, createGridForTruck } from '../../data/loadLevel.js';
+import { loadShapeLevels, createGridForTruck } from '../../data/loadLevel.js';
+import { pickDayPuzzles } from '../../data/pickDayPuzzles.js';
 import { getShapeBounds } from '../../core/Shape.js';
 import { findHint } from '../../core/Solver.js';
-import levelsRaw from '../../data/levels.json';
+import shapeLevelsRaw from '../../data/levels.shapes.json';
 import { GridView } from '../objects/GridView.js';
 import { PieceView } from '../objects/PieceView.js';
-import { PlacementHistory } from '../objects/PlacementHistory.js';
+import { showNewPieceIntro } from '../objects/NewPieceIntro.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -23,7 +24,7 @@ import { UI_SCALE } from '../uiScale.js';
  * GridView.findNearestValidOrigin() for the best nearby legal placement (a generous,
  * "magnetic" search, not a pixel-perfect one), shows a ghost highlight on the board via
  * GridView.showGhost(), and on a legal drop commits the placement to the Grid and
- * locks the piece in place. This is deliberately where that decision-making logic
+ * snaps the piece into place. This is deliberately where that decision-making logic
  * lives rather than in PieceView/GridView: those two classes only know how to draw
  * themselves and report geometry — the actual "what does a drag mean for this puzzle"
  * decision belongs with the scene that owns the Grid (see "Architectural boundary" in
@@ -37,14 +38,13 @@ import { UI_SCALE } from '../uiScale.js';
  * than mutating this instance in place, so every truck begins from a clean Grid with
  * no leftover placements.
  *
- * As of Milestone 7, this scene also owns Undo/Reset/Pause (see the concept art
- * reference in docs/game_concept.pdf, which shows these as the board's basic controls).
- * Undo and Reset both work by walking back through a PlacementHistory stack, freeing
- * each undone piece's cells on the Grid and calling PieceView.unlock() to restore it to
- * the tray — Reset is just "undo everything" rather than separate logic. Pause doesn't
- * use Phaser's own scene.pause() (that would also freeze the Resume button itself,
- * since it lives in this same scene) — instead it shows an overlay and disables
- * dragging on every not-yet-placed piece directly.
+ * Placed pieces are not locked: the player can pick one up again and drag it somewhere else
+ * on the board, or drag it off the board to send it back to the tray (see pickUpFromBoard()
+ * and the dragend handler). That is why there is no Undo button - moving pieces around by hand
+ * replaces it, without a fixed button to reach for. Reset (clears the whole board back to the
+ * tray) and Pause remain. Pause doesn't use Phaser's own scene.pause() (that would also
+ * freeze the Resume button itself, since it lives in this same scene) — instead it shows an
+ * overlay and disables dragging on every piece directly.
  *
  * Game structure (see docs/game_concept.pdf's Daily Loop): the game is a list of LEVELS
  * (each one in-game day), and each level holds several TRUCKS (one packing puzzle
@@ -63,6 +63,9 @@ import { UI_SCALE } from '../uiScale.js';
  * core/Solver.findHint) and fades the button out - one hint per truck. The hint only
  * nudges: it never places, moves or removes anything. The highlight stays until the
  * right piece is actually sitting there (see refreshHint()).
+ *
+ * On the first truck of a level that introduces new shapes, a "New piece!" popup shows (see
+ * objects/NewPieceIntro.js) before the player can start.
  */
 
 /** A single cell size is used for both the board and the tray so a piece doesn't change
@@ -98,7 +101,7 @@ const HUD_BUTTON_STYLE = {
 };
 
 /** Coins awarded for completing a truck whose data doesn't set its own `reward` (see
- *  levels.schema.md) — every truck actually shipped in levels.json sets one explicitly,
+ *  levels.schema.md) — every puzzle actually shipped in levels.shapes.json sets one explicitly,
  *  so this is purely a safety net for hand-edited/future level data that omits it. */
 const DEFAULT_REWARD = 10;
 
@@ -138,20 +141,19 @@ export class PuzzleScene extends Scene
         this.hint = null;
         /** Whether the hint highlight is currently drawn on the board. */
         this.hintShowing = false;
-        this.history = new PlacementHistory();
-        /** @type {Map<string | number, PieceView>} placementId -> the PieceView placed under it, so undo can look a piece back up from the history stack. */
-        this.pieceViewsById = new Map();
+        /** While a piece that came off the board is being carried: the board cell it came from ({ row, col }), else null. */
+        this.pickedUpFrom = null;
     }
 
     create ()
     {
         this.cameras.main.setBackgroundColor(0xf5ead6);
 
-        // loadLevels throws loudly on any schema violation, so a broken levels.json
+        // loadShapeLevels throws loudly on any schema violation, so broken level data
         // fails fast and visibly here rather than producing a silently-wrong board.
-        this.levels = loadLevels(levelsRaw);
+        this.levels = loadShapeLevels(shapeLevelsRaw);
         this.levelData = this.levels[this.levelIndex];
-        const truck = this.levelData.trucks[this.truckIndex];
+        const truck = this.getDayPuzzles()[this.truckIndex];
 
         this.truck = truck;
         this.grid = createGridForTruck(truck);
@@ -182,6 +184,48 @@ export class PuzzleScene extends Scene
         this.layoutTray(boardY + this.gridView.pixelHeight);
         this.wireDragEvents();
         this.createHud();
+
+        // A level that introduces new shapes announces them once, at the start of the day (its
+        // first truck; later trucks are fresh scene instances and must not repeat it).
+        if (this.truckIndex === 0 && this.levelData.newShapes.length > 0)
+        {
+            showNewPieceIntro(this, this.levelData.newShapes);
+        }
+    }
+
+    /**
+     * The puzzles the player plays today, one per truck slot, in play order.
+     *
+     * Each truck slot in the level data holds a pool of alternative puzzles (see
+     * data/pickDayPuzzles.js). When a day starts (truck 1) the puzzles are picked by ROTATING
+     * through the pools: the first time a level is played it gets each pool's first puzzle, the
+     * second time the second, and so on, so replays always give fresh puzzles. How many times
+     * each level has been started is counted in the registry ('levelPlayCounts'), which lasts
+     * as long as the game is open and is NOT reset by starting a new game (otherwise every new
+     * game would begin with the same puzzles).
+     *
+     * The picks are then remembered in the registry for the rest of the day: every truck is a
+     * fresh PuzzleScene instance, and picking again would count another play and hand out
+     * different puzzles for the same truck. If the stored picks belong to another day (e.g. a
+     * debug jump straight into the middle of a level), a fresh set is picked instead.
+     *
+     * @returns {Array<import('../../data/loadLevel.js').RawTruck>}
+     */
+    getDayPuzzles ()
+    {
+        const stored = this.registry.get('dayPuzzles');
+        if (this.truckIndex !== 0 && stored && stored.levelIndex === this.levelIndex)
+        {
+            return stored.puzzles;
+        }
+
+        const playCounts = this.registry.get('levelPlayCounts') ?? {};
+        const playNumber = playCounts[this.levelIndex] ?? 0;
+        this.registry.set('levelPlayCounts', { ...playCounts, [this.levelIndex]: playNumber + 1 });
+
+        const puzzles = pickDayPuzzles(this.levelData, playNumber);
+        this.registry.set('dayPuzzles', { levelIndex: this.levelIndex, puzzles });
+        return puzzles;
     }
 
     /**
@@ -245,7 +289,6 @@ export class PuzzleScene extends Scene
             pieceView.homeY = cursorY;
 
             this.pieceViews.push(pieceView);
-            this.pieceViewsById.set(pieceView.placementId, pieceView);
 
             cursorX += width + TRAY_PIECE_GAP;
             rowHeight = Math.max(rowHeight, height);
@@ -290,7 +333,7 @@ export class PuzzleScene extends Scene
 
     /**
      * Creates the top-left HUD stack shown in the concept art's board reference
-     * (docs/game_concept.pdf): a coin/paycheck display above the Undo/Reset/Pause
+     * (docs/game_concept.pdf): a coin/paycheck display above the Reset/Pause
      * buttons, all simple placeholder text for now — real styling/iconography is
      * Milestone 10's job. The buttons are separate, always-interactive GameObjects
      * (not PieceViews), so they keep working even while Pause has disabled dragging on
@@ -319,15 +362,14 @@ export class PuzzleScene extends Scene
             return button;
         };
 
-        makeButton(56 * UI_SCALE, 'Undo', () => this.undoLast());
-        makeButton(96 * UI_SCALE, 'Reset', () => this.resetLevel());
-        this.pauseButton = makeButton(136 * UI_SCALE, 'Pause', () => this.togglePause());
+        makeButton(56 * UI_SCALE, 'Reset', () => this.resetLevel());
+        this.pauseButton = makeButton(96 * UI_SCALE, 'Pause', () => this.togglePause());
 
         // The Hint button only exists from the second level onwards (level index 1+), so
         // the very first day stays hint-free.
         if (this.levelIndex >= 1)
         {
-            this.hintButton = makeButton(176 * UI_SCALE, 'Hint', () => this.useHint());
+            this.hintButton = makeButton(136 * UI_SCALE, 'Hint', () => this.useHint());
         }
     }
 
@@ -401,24 +443,23 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * Commits a piece to the board at a legal origin: records it on the Grid and in the
-     * undo history, snaps and locks its view, and fires win handling if that completed
-     * the board. Used by the drag-drop handler; refreshes the hint highlight, since the
-     * piece just placed may be the one the hint was pointing at.
+     * Commits a piece to the board at a legal origin: records it on the Grid, snaps its view
+     * into place, and fires win handling if that completed the board. Used by the drag-drop
+     * handler; refreshes the hint highlight, since the piece just placed may be the one the
+     * hint was pointing at.
      *
-     * @param {PieceView} pieceView - an unplaced piece.
+     * @param {PieceView} pieceView - a piece that is not currently on the board.
      * @param {number} row - board row of the piece's origin (must be a legal placement).
      * @param {number} col - board column of the piece's origin.
      */
     placePiece (pieceView, row, col)
     {
         this.grid.place(pieceView.placementId, pieceView.shapeId, row, col);
-        this.history.push(pieceView.placementId);
 
         const snapped = this.gridView.originToWorld(row, col);
         pieceView.container.setPosition(snapped.x, snapped.y);
 
-        pieceView.lockInPlace();
+        pieceView.markPlaced(row, col);
 
         this.refreshHint();
 
@@ -446,6 +487,14 @@ export class PuzzleScene extends Scene
             // Bring the piece being dragged above every other piece/the board, so it
             // visibly sits "in hand" rather than being occluded while moving over them.
             this.children.bringToTop(gameObject);
+
+            // Grabbing a piece that is on the board takes it off the Grid straight away, so
+            // its own old cells don't count as occupied when it is dropped back nearby.
+            const grabbed = gameObject.getData('pieceView');
+            if (grabbed && grabbed.isPlaced)
+            {
+                this.pickUpFromBoard(grabbed);
+            }
 
             // Pieces resting in a shrunk tray (see layoutTray/PieceView.trayScale) are
             // drawn at true size the moment they're picked up, so what the player drags
@@ -492,23 +541,61 @@ export class PuzzleScene extends Scene
 
             const { row, col, isValid } = this.gridView.findNearestValidOrigin(pieceView.shapeId, gameObject.x, gameObject.y);
 
+            // Where this piece was before it was picked up, if it came off the board.
+            const cameFrom = this.pickedUpFrom;
+            this.pickedUpFrom = null;
+
             if (isValid)
             {
                 this.placePiece(pieceView, row, col);
             }
+            else if (cameFrom && this.isNearBoard(gameObject.x, gameObject.y))
+            {
+                // A piece lifted off the board and let go over the board again, but somewhere
+                // illegal (overlapping another piece, say): put it back exactly where it was,
+                // so a slip of the mouse doesn't cost the player a placement. (Its old cells
+                // are free - it was taken off the Grid when picked up.)
+                this.placePiece(pieceView, cameFrom.row, cameFrom.col);
+            }
             else
             {
-                // Illegal drop (off the board, overlapping a blocked cell, overlapping
-                // an already-placed piece, or nothing legal within the magnetic snap
-                // search): return the piece to its tray slot untouched. The Grid itself
-                // was never mutated in this branch, so there's no state to roll back
-                // beyond the visual position. Restore its tray scale (set to 1 for
-                // dragging, in the dragstart handler above) since it's going back to
-                // rest in a possibly-shrunk tray.
-                gameObject.setPosition(pieceView.homeX, pieceView.homeY);
-                gameObject.setScale(pieceView.trayScale);
+                // Dropped away from the board (this is how a player takes a piece OFF the
+                // board), or a tray piece dropped somewhere illegal: it goes back to its tray
+                // slot. The Grid already doesn't contain it, so there is nothing to undo
+                // beyond the visual position and tray size.
+                this.returnToTray(pieceView);
             }
         });
+    }
+
+    /**
+     * Takes a piece that is on the board off the Grid, because the player has started
+     * dragging it. Remembers where it was (in this.pickedUpFrom) so the dragend handler can
+     * put it back if it is dropped somewhere illegal on the board.
+     *
+     * @param {PieceView} pieceView - a piece that is currently placed.
+     */
+    pickUpFromBoard (pieceView)
+    {
+        this.pickedUpFrom = pieceView.boardOrigin;
+        this.grid.remove(pieceView.placementId);
+        pieceView.isPlaced = false;
+        pieceView.boardOrigin = null;
+
+        // The board changed: if the hinted piece was the one picked up, its highlight returns.
+        this.refreshHint();
+    }
+
+    /**
+     * Sends a piece back to its slot in the tray (at its tray size). Assumes the piece is no
+     * longer on the Grid.
+     *
+     * @param {PieceView} pieceView
+     */
+    returnToTray (pieceView)
+    {
+        pieceView.unlock();
+        pieceView.container.setPosition(pieceView.homeX, pieceView.homeY);
     }
 
     /**
@@ -534,48 +621,35 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * Undoes the single most recent placement: frees its cells on the Grid, restores
-     * its PieceView to the tray (unlocked and back at its home position), and pops it
-     * off the history stack. A no-op while paused (the board shouldn't change under a
-     * pause overlay) or once nothing is left to undo.
+     * Returns the board to its starting state: every placed piece comes off the Grid and goes
+     * back to its slot in the tray. A no-op while paused (the board shouldn't change under a
+     * pause overlay).
      */
-    undoLast ()
+    resetLevel ()
     {
-        if (this.isPaused || this.history.isEmpty)
+        if (this.isPaused)
         {
             return;
         }
 
-        const placementId = this.history.pop();
-        this.grid.remove(placementId);
-
-        const pieceView = this.pieceViewsById.get(placementId);
-        pieceView.unlock();
-        pieceView.container.setPosition(pieceView.homeX, pieceView.homeY);
+        for (const pieceView of this.pieceViews)
+        {
+            if (pieceView.isPlaced)
+            {
+                this.grid.remove(pieceView.placementId);
+                this.returnToTray(pieceView);
+            }
+        }
 
         this.refreshHint();
-    }
-
-    /**
-     * Returns the level to its initial, fully-unplaced state — implemented as "undo
-     * everything" rather than separate logic, so Reset can never drift out of sync
-     * with what a chain of individual Undos would produce.
-     */
-    resetLevel ()
-    {
-        while (!this.history.isEmpty)
-        {
-            this.undoLast();
-        }
     }
 
     /**
      * Toggles a pause overlay on/off. Deliberately does NOT use Phaser's own
      * this.scene.pause() (see the class doc) — that would also suspend input for the
      * Resume button sitting in this same scene, making it unclickable. Instead this
-     * manually disables dragging on every not-yet-placed piece and shows/hides a
-     * simple overlay; already-placed pieces don't need to be touched since they're
-     * already locked (non-draggable) regardless of pause state.
+     * manually disables dragging on every piece (placed pieces can be picked up too) and
+     * shows/hides a simple overlay.
      */
     togglePause ()
     {
@@ -583,10 +657,6 @@ export class PuzzleScene extends Scene
 
         for (const pieceView of this.pieceViews)
         {
-            if (pieceView.isPlaced)
-            {
-                continue;
-            }
             if (this.isPaused)
             {
                 pieceView.container.disableInteractive();
@@ -635,8 +705,12 @@ export class PuzzleScene extends Scene
      * to the day's running totals kept in the registry (see the class doc), and routes
      * to whichever overlay fits: WinScene if another truck follows today (its button
      * starts that truck), or — after the day's last truck — DayCompleteScene with the
-     * day's totals (trucks completed + coins earned) and its Shop/Decorate/Next Day
-     * buttons.
+     * day's totals (trucks completed, truck earnings, any end-of-level bonuses, total earned)
+     * and its Shop/Decorate/Next Day buttons.
+     *
+     * End-of-level bonuses (e.g. the first-day bonus) come from the level data's `bonuses`
+     * list and are paid once, here, when the day's last truck is done - added to both the day's
+     * earnings and the all-time total.
      */
     handleWin ()
     {
@@ -645,16 +719,26 @@ export class PuzzleScene extends Scene
         const dayEarned = (this.registry.get('dayEarned') ?? 0) + reward;
         this.registry.set('dayTrucksCompleted', trucksCompleted);
         this.registry.set('dayEarned', dayEarned);
-        const totalEarned = (this.registry.get('totalEarned') ?? 0) + reward;
+        let totalEarned = (this.registry.get('totalEarned') ?? 0) + reward;
         this.registry.set('totalEarned', totalEarned);
+
+        const trucksTotal = this.levelData.trucks.length;
+        const isLastTruck = this.truckIndex === trucksTotal - 1;
+
+        // The day's last truck also pays out the level's bonuses, once.
+        const bonuses = isLastTruck ? this.levelData.bonuses ?? [] : [];
+        const bonusTotal = bonuses.reduce((sum, bonus) => sum + bonus.amount, 0);
+        if (bonusTotal > 0)
+        {
+            this.registry.set('dayEarned', dayEarned + bonusTotal);
+            totalEarned += bonusTotal;
+            this.registry.set('totalEarned', totalEarned);
+        }
 
         // Keep the HUD counter (visible dimmed behind the overlay) in step with the popup.
         this.coinText.setText(`$${totalEarned}`);
 
         this.gridView.clearHint();
-
-        const trucksTotal = this.levelData.trucks.length;
-        const isLastTruck = this.truckIndex === trucksTotal - 1;
 
         this.scene.pause();
 
@@ -663,8 +747,9 @@ export class PuzzleScene extends Scene
             this.scene.launch('DayCompleteScene', {
                 levelIndex: this.levelIndex,
                 trucksCompleted,
-                earned: dayEarned,
-                totalEarned,
+                truckEarnings: dayEarned,
+                bonuses,
+                earned: dayEarned + bonusTotal,
                 isLastLevel: this.levelIndex === this.levels.length - 1,
             });
         }

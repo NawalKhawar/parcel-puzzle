@@ -2,7 +2,7 @@
  * loadApartment.js
  *
  * Validates the apartment data in apartment.json (room size + the furniture catalog) and
- * the shop data in shop.json (tabs and their placeholder items), the same way
+ * the shop data in shop.json (the list of placeholder items for sale), the same way
  * loadLevel.js guards the puzzle data: bad data fails loudly at load time, naming the
  * offending entry, instead of producing a half-broken screen. Must never import
  * 'phaser' - see "Architectural boundary" in PROJECT_STRUCTURE.md.
@@ -81,46 +81,33 @@ export function loadApartment(raw) {
 
 /**
  * @typedef {Object} ShopData
- * @property {Array<{id: string, label: string, items: Array<{id: string, name: string}>}>} tabs
+ * @property {Array<{id: string, name: string}>} items - everything for sale. The shop only sells
+ *   items for the apartment, so there are no categories - just one list.
  */
 
 /**
- * Validates shop.json's contents: a non-empty list of tabs, each with a label and a list
- * of named placeholder items; ids unique across the whole shop.
+ * Validates shop.json's contents: a non-empty list of named items with unique ids.
  *
  * @param {ShopData} raw
  * @returns {ShopData} the same object, proven valid.
- * @throws {Error} naming the offending tab/item and the rule it broke.
+ * @throws {Error} naming the offending item and the rule it broke.
  */
 export function loadShop(raw) {
-    if (!raw || !Array.isArray(raw.tabs) || raw.tabs.length === 0) {
-        throw new Error('Shop data needs a non-empty "tabs" array');
+    if (!raw || !Array.isArray(raw.items) || raw.items.length === 0) {
+        throw new Error('Shop data needs a non-empty "items" array');
     }
 
     const seenIds = new Set();
-    const claim = (id, what) => {
-        if (typeof id !== 'string' || id.length === 0) {
-            throw new Error(`${what} needs a non-empty string "id"`);
+    for (const item of raw.items) {
+        if (!item || typeof item.id !== 'string' || item.id.length === 0) {
+            throw new Error(`Shop item needs a non-empty string "id" (got ${JSON.stringify(item)})`);
         }
-        if (seenIds.has(id)) {
-            throw new Error(`Duplicate shop id "${id}"`);
+        if (seenIds.has(item.id)) {
+            throw new Error(`Duplicate shop item id "${item.id}"`);
         }
-        seenIds.add(id);
-    };
-
-    for (const tab of raw.tabs) {
-        claim(tab && tab.id, 'Shop tab');
-        if (typeof tab.label !== 'string' || tab.label.length === 0) {
-            throw new Error(`Shop tab "${tab.id}": "label" must be a non-empty string`);
-        }
-        if (!Array.isArray(tab.items)) {
-            throw new Error(`Shop tab "${tab.id}": "items" must be an array`);
-        }
-        for (const item of tab.items) {
-            claim(item && item.id, `Item in shop tab "${tab.id}"`);
-            if (typeof item.name !== 'string' || item.name.length === 0) {
-                throw new Error(`Shop item "${item.id}": "name" must be a non-empty string`);
-            }
+        seenIds.add(item.id);
+        if (typeof item.name !== 'string' || item.name.length === 0) {
+            throw new Error(`Shop item "${item.id}": "name" must be a non-empty string`);
         }
     }
     return raw;

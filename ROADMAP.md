@@ -215,9 +215,9 @@ tracked separately once the puzzle core is approved).
 
 ---
 
-## Milestones 9.1 - 9.6 — Additions Requested After Milestone 9
+## Milestones 9.1 - 9.10 — Additions Requested After Milestone 9
 These were requested directly after Milestone 9 was finished, so they sit between
-Milestone 9 and Milestone 10 rather than being renumbered. All six are **done**; their
+Milestone 9 and Milestone 10 rather than being renumbered. All ten are **done**; their
 detailed decisions are in `TRACKER.md`'s Decision Log. Together they turn the single
 "shift" of Milestone 9 into the real game structure: **30 levels (days), each made of
 several trucks (puzzles)**, with a title screen at the front and a shop/apartment at the
@@ -271,7 +271,8 @@ their tray.
 - Pressing it **highlights**, with a pulsing gold overlay, the cells where one piece
   belongs. It never places, moves or removes anything: if the player's placements are a
   dead end the highlight can sit over their wrong pieces. The highlight stays until the
-  right piece is placed there (and returns if that piece is undone).
+  right piece is placed there (and returns if that piece is lifted off the board or the
+  board is reset).
 - The solver moved to `src/core/Solver.js` (the game now uses it at runtime) with a
   `findHint` helper; tests cover it.
 
@@ -282,10 +283,11 @@ removes the highlight; the button stays faded for the rest of that truck.
 **Goal:** The basic shop screen.
 
 **Deliverables:**
-- `ShopScene` with three horizontal tabs (Clothes, Accessories, Decor), each showing
-  labelled placeholder boxes; content comes from `src/data/shop.json`.
+- `ShopScene` showing a grid of labelled placeholder item boxes for the apartment; content
+  comes from `src/data/shop.json`. (Built with Clothes / Accessories / Decor tabs; Milestone
+  9.10 removed the tabs, and clothing, since the shop only sells apartment items.)
 
-**DoD:** Shop opens from the day popup, all three tabs switch, Back returns to the popup.
+**DoD:** Shop opens from the day popup, shows the item boxes, Back returns to the popup.
 Nothing can be bought yet (see Future).
 
 ### Milestone 9.6 — Apartment UI (done, placeholder content)
@@ -302,6 +304,80 @@ Nothing can be bought yet (see Future).
 
 **DoD:** Items can be dragged in, placed, moved, overlapped correctly front-to-back,
 rejected when illegal, and returned to the inventory.
+
+### Milestone 9.7 — Shape-Gated Puzzle Pool (done)
+**Goal:** A second set of puzzles in which piece shapes are introduced gradually, so complex
+shapes only appear in later levels - the data needed to build the new shape progression.
+
+**Deliverables:**
+- `src/data/levels.shapes.json`: 800 puzzles, same level structure as `levels.json` (same
+  trucks per day, same easy/medium/hard order) but each truck slot holds a **pool of 5**
+  alternative puzzles. Levels 1-2 use only the simple shapes (dot, domino_h, domino_v,
+  tri_i, square, bar4); level 3 adds tri_l and l4; levels 8, 13, 18 and 23 add t4, s4, p5
+  and plus. At a level that introduces shapes, every puzzle contains at least one.
+- `generate-levels.js --shape-gated [--pool=N]` builds it (the normal `levels.json` output
+  is unchanged), `loadShapeLevels` validates it, `validate-levels.js --shapes` solves every
+  puzzle, and `tests/data/shapeLevels.test.js` locks the unlock plan in.
+
+**DoD:** `node scripts/validate-levels.js --shapes` reports all 800 puzzles solvable and the
+tests confirm no puzzle uses a shape before the level that introduces it.
+
+### Milestone 9.8 — Shape Progression in Gameplay (done)
+**Goal:** The game itself plays the shape-gated puzzles, so complex shapes only appear in later
+levels - still 30 levels with the same trucks per day and easy/medium/hard order.
+
+**Deliverables:**
+- `PuzzleScene` plays `levels.shapes.json` instead of `levels.json`.
+- `src/data/pickDayPuzzles.js`: at the start of each day one puzzle is picked from each truck
+  slot's pool, ordered easiest to hardest, and remembered for the rest of the day so a truck
+  never changes mid-day. (Milestone 9.9 changed the pick from random to rotating.)
+- Tests for the selection (one per slot, from its own pool, never getting easier, only
+  unlocked shapes).
+
+**DoD:** Playing from the title screen shows puzzles from the pools; level 1-2 puzzles only
+use simple shapes; new shapes first appear at levels 3, 8, 13, 18 and 23.
+`levels.json` is no longer played; it stays as the original reference set for the generator,
+validator and tests.
+
+### Milestone 9.9 — Rotation, Free Piece Movement & New-Piece Popup (done)
+**Goal:** Three gameplay refinements requested after the shape progression went in.
+
+**Deliverables:**
+- **Rotating puzzles:** each level's puzzles now rotate through the 5 in every pool - first play
+  uses the first puzzle of each pool, the next play the second, and so on, wrapping after the
+  fifth - instead of picking at random. The play count per level is kept for as long as the
+  game is open (and is not reset by starting a new game).
+- **Pieces can be picked up again:** a placed piece can be dragged to a new spot, or dragged off
+  the board to send it back to the tray; dropped somewhere illegal over the board it snaps back to
+  where it was. This replaces the **Undo button, which is removed** (moving pieces by hand
+  does the job without a fixed button); Reset and Pause stay. Placed pieces use an exact-shape
+  click area so neighbouring pieces never steal each other's clicks.
+- **New-piece popup:** at the start of a level that introduces shapes (3, 8, 13, 18, 23) a
+  "New piece!" popup shows the new shapes and their names; it pops in with an overshoot, stays
+  about 2 seconds, then shrinks away. Input is blocked while it is up.
+
+**DoD:** Replaying level 1 six times gives puzzles 1, 2, 3, 4, 5, 1; a placed piece can be moved or
+dragged off the board; there is no Undo button; the popup appears at the five introduction
+levels only, on their first truck.
+
+### Milestone 9.10 — Simpler Shop, New Economy & End-of-Day Report (done)
+**Goal:** Settle what the shop sells and how money works, and give the end-of-day popup its
+final content.
+
+**Deliverables:**
+- **Shop is one list of apartment items:** the Clothes / Accessories / Decor tabs are gone (no
+  clothing at all); `shop.json` is now just `{ items: [...] }`.
+- **Economy:** a truck pays **$10 easy, $15 medium, $35 hard** (set once in the generator and
+  written into every puzzle's `reward`). Day 1 also pays a **$10 first-day bonus**, so the player
+  has **$40 after day 1** (3 easy trucks = $30, + $10). Bonuses are data (`bonuses` on a level in
+  `levels.shapes.json`), so more can be added later without code changes.
+- **End-of-day popup:** headed by the employer - **Adequate Parcel Service**, tagline
+  *Arrives Intact, Mostly*, and the **Outbound Packing Department** in smaller type (all from
+  `src/data/company.json`) - then trucks completed, truck earnings, any bonuses (e.g. the
+  first-day bonus), and the total earned that day.
+
+**DoD:** After day 1 the popup shows 3 trucks, $30 truck earnings, +$10 first-day bonus and $40
+total, and the coin counter reads $40; the shop shows no tabs.
 
 ---
 
@@ -322,8 +398,7 @@ once the core loop (Milestones 1–9) is validated and stable.
 
 ## Future / Not Yet Scheduled
 Explicitly deferred until the puzzle core above is approved and stable:
-- Shop purchasing and spending coins; equipping clothes/accessories on a character; the
-  apartment's real furniture/decor items (the UI and placement exist - see 9.5 / 9.6 - but
+- Shop purchasing and spending coins; the apartment's real furniture/decor items (the UI and placement exist - see 9.5 / 9.6 - but
   with placeholder content only).
 - Narrative FTUE panels (graduation → moving → job → apartment).
 - Monetization (rewarded hint ads, interstitials).

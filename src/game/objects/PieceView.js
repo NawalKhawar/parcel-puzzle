@@ -18,7 +18,7 @@ import { UI_SCALE } from '../uiScale.js';
  * constructor): it makes itself hit-testable and tells Phaser's input plugin it can be
  * dragged, but it does NOT decide what a drag means — PuzzleScene owns that (listening
  * for the scene-wide 'drag'/'dragend' events, checking src/core/Grid.canPlace, and
- * calling back into this class via lockInPlace()/unlock()). Keeping "can this be picked
+ * calling back into this class via markPlaced()/unlock()). Keeping "can this be picked
  * up" here, and "what does a drop actually do to the puzzle" in the scene, mirrors the
  * engine/rendering split used everywhere else (see "Architectural boundary" in
  * PROJECT_STRUCTURE.md): this class still holds no puzzle-rule logic of its own.
@@ -51,6 +51,18 @@ const SHAPE_COLORS = {
     plus: 0xd98fa3,
 };
 const DEFAULT_COLOR = 0xbfbfbf;
+
+/**
+ * The colour a shape is drawn in (shared with other UI that shows a shape, such as the
+ * "new piece" popup, so it matches the piece the player will see in the tray).
+ *
+ * @param {string} shapeId
+ * @returns {number} 0xrrggbb
+ */
+export function getShapeColor(shapeId)
+{
+    return SHAPE_COLORS[shapeId] ?? DEFAULT_COLOR;
+}
 const CELL_PADDING = 3 * UI_SCALE; // px gap between adjacent cell squares, purely cosmetic.
 
 /** How far beyond the piece's visible bounds its clickable/draggable hit area extends
@@ -84,8 +96,11 @@ export class PieceView
         this.placementId = placementId;
         this.baseColor = SHAPE_COLORS[shapeId] ?? DEFAULT_COLOR;
 
-        /** True once this piece has been successfully placed on the board (Milestone 5). Locked pieces no longer respond to drag input. */
+        /** True while this piece sits on the board. A placed piece can still be picked up again (dragged to a new spot, or off the board back to the tray). */
         this.isPlaced = false;
+
+        /** While placed: the board cell ({ row, col }) this piece's origin is on; null while it is in the tray or being carried. Lets PuzzleScene put it back if it is dropped somewhere illegal. */
+        this.boardOrigin = null;
 
         /** How much smaller than true size this piece is drawn while resting in the
          *  tray (see PuzzleScene.layoutTray, which shrinks the whole tray uniformly
@@ -164,7 +179,20 @@ export class PieceView
 
         const displayOriginX = this.pixelWidth / 2;
         const displayOriginY = this.pixelHeight / 2;
+        const cells = getShapeCells(this.shapeId);
+        const cellSize = this.cellSize;
 
+        // The hit area is set up once, and its test looks at isPlaced EVERY time it runs, so
+        // moving a piece between the tray and the board never needs the hit area replaced
+        // (Phaser only keeps the first one it is given, and swapping it in the middle of a
+        // drag would be fragile). The two situations want different hit areas:
+        //   - IN THE TRAY: a forgiving bounding box, padded outward by HIT_AREA_PADDING.
+        //   - ON THE BOARD: pieces sit edge to edge, and a bounding box (let alone a padded
+        //     one) would overlap its neighbours - an L-shaped piece's box even covers the
+        //     notch another piece sits in. So a point only hits if it is inside one of this
+        //     piece's own cells.
+        // x and y arrive already shifted by the display origin (see the long note above), so
+        // the board test takes that shift off again before comparing against the cells.
         this.container.setInteractive(
             new Geom.Rectangle(
                 displayOriginX - HIT_AREA_PADDING,
@@ -172,40 +200,53 @@ export class PieceView
                 this.pixelWidth + HIT_AREA_PADDING * 2,
                 this.pixelHeight + HIT_AREA_PADDING * 2
             ),
-            Geom.Rectangle.Contains
+            (area, x, y) => {
+                if (!this.isPlaced)
+                {
+                    return Geom.Rectangle.Contains(area, x, y);
+                }
+                const localX = x - displayOriginX;
+                const localY = y - displayOriginY;
+                return cells.some(
+                    (cell) =>
+                        localX >= cell.col * cellSize &&
+                        localX < (cell.col + 1) * cellSize &&
+                        localY >= cell.row * cellSize &&
+                        localY < (cell.row + 1) * cellSize
+                );
+            }
         );
         this.container.setData('pieceView', this);
         this.scene.input.setDraggable(this.container);
     }
 
     /**
-     * Marks this piece as permanently placed: disables further pointer interaction.
-     * "Permanently" lasted until Milestone 7 added unlock() below — a placed piece can
-     * now be freed again via undo/reset. Always locks in at true size (scale 1) — a
-     * placed piece's cells must line up exactly with the board's own cells, so any
-     * tray-only shrinking (see trayScale above) is undone here regardless of what size
-     * it was resting at in the tray.
+     * Marks this piece as sitting on the board at (row, col). It stays draggable, so the
+     * player can pick it up again and move it or take it off the board. Always shown at true
+     * size (scale 1) - a placed piece's cells must line up exactly with the board's own
+     * cells, so any tray-only shrinking (see trayScale above) is undone here.
+     *
+     * @param {number} row - board row of this piece's origin.
+     * @param {number} col - board column of this piece's origin.
      */
-    lockInPlace ()
+    markPlaced (row, col)
     {
         this.isPlaced = true;
+        this.boardOrigin = { row, col };
         this.container.setScale(1);
-        this.container.disableInteractive();
     }
 
     /**
-     * Reverses lockInPlace(): marks this piece as unplaced again and re-enables
-     * dragging. Used by PuzzleScene's undo/reset (Milestone 7) after it has already
-     * freed this piece's cells back on src/core/Grid — this method only concerns
-     * itself with this piece's own visual/interactive state, not the Grid. Restores
-     * its tray size (rather than leaving it at the true/full size it was placed at),
-     * since unlock() always puts a piece back into the tray.
+     * Puts this piece back to "in the tray": not placed, shown at its tray size, with the
+     * forgiving tray hit area. PuzzleScene calls this after it has already freed the piece's
+     * cells on src/core/Grid - this method only concerns this piece's own visual/interactive
+     * state, not the Grid.
      */
     unlock ()
     {
         this.isPlaced = false;
+        this.boardOrigin = null;
         this.container.setScale(this.trayScale);
-        this.makeDraggable();
     }
 
     /**

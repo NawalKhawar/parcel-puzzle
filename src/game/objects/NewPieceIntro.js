@@ -1,0 +1,130 @@
+import { getShapeBounds, getShapeCells, getShapeName } from '../../core/Shape.js';
+import { getShapeColor } from './PieceView.js';
+import { UI_SCALE } from '../uiScale.js';
+
+/**
+ * NewPieceIntro.js
+ *
+ * The "New piece!" popup shown at the start of a level that introduces new shapes. It pops
+ * onto the screen with a little overshoot ("give"), stays for a few seconds, then shrinks back
+ * and disappears, returning to gameplay. While it is up, a full-screen blocker swallows all
+ * pointer input, so the puzzle can't be touched underneath; the player never has to dismiss it.
+ *
+ * The popup shows each new shape drawn in its own colour (the same colour as the matching
+ * piece in the tray) with its name underneath. It draws plain rectangles and holds no puzzle
+ * logic; PuzzleScene decides when to show it.
+ */
+
+/** Timings in milliseconds. */
+const POP_IN_MS = 450;
+const HOLD_MS = 2000;
+const SHRINK_MS = 300;
+
+/** Draw depth: above everything in PuzzleScene, including the hint highlight. */
+const INTRO_DEPTH = 2000;
+
+/** Size of one cell of a previewed shape, in design pixels (before UI_SCALE). */
+const PREVIEW_CELL = 40;
+const PREVIEW_GAP = 56;
+
+/**
+ * Shows the popup and, when it has gone, calls `onDone`.
+ *
+ * @param {import('phaser').Scene} scene - the scene to draw into (PuzzleScene).
+ * @param {string[]} shapeIds - the newly introduced shapes to show.
+ * @param {() => void} [onDone] - called once the popup has shrunk away and been removed.
+ */
+export function showNewPieceIntro(scene, shapeIds, onDone)
+{
+    const S = UI_SCALE;
+    const centerX = scene.scale.width / 2;
+    const centerY = scene.scale.height / 2;
+    const cell = PREVIEW_CELL * S;
+
+    // Dims the board and, being interactive, stops every click/drag from reaching it.
+    const blocker = scene.add
+        .rectangle(centerX, centerY, scene.scale.width, scene.scale.height, 0x000000, 0.4)
+        .setDepth(INTRO_DEPTH)
+        .setInteractive();
+
+    // ---- Layout of the panel, measured from the shapes it has to hold.
+    const shapes = shapeIds.map((id) => ({ id, bounds: getShapeBounds(id) }));
+    const rowWidth = shapes.reduce((sum, shape) => sum + shape.bounds.cols * cell, 0) + (shapes.length - 1) * PREVIEW_GAP * S;
+    const tallest = Math.max(...shapes.map((shape) => shape.bounds.rows)) * cell;
+    const panelWidth = Math.max(380 * S, rowWidth + 120 * S);
+    const panelHeight = 96 * S + tallest + 70 * S;
+
+    // Everything is a child of one container centred on (0, 0), so scaling the container
+    // pops/shrinks the whole popup from its middle.
+    const container = scene.add.container(centerX, centerY).setDepth(INTRO_DEPTH + 1).setScale(0);
+
+    container.add(scene.add.rectangle(0, 0, panelWidth, panelHeight, 0xfaf3e4).setStrokeStyle(3 * S, 0x3a362f));
+
+    container.add(
+        scene.add
+            .text(0, -panelHeight / 2 + 40 * S, shapeIds.length > 1 ? 'New pieces!' : 'New piece!', {
+                fontFamily: 'Arial Black',
+                fontSize: 34 * S,
+                color: '#3a362f',
+            })
+            .setOrigin(0.5)
+    );
+
+    // The shapes, left to right, each with its name underneath.
+    let cursorX = -rowWidth / 2;
+    const shapesTop = -panelHeight / 2 + 88 * S;
+    for (const shape of shapes)
+    {
+        const color = getShapeColor(shape.id);
+        for (const part of getShapeCells(shape.id))
+        {
+            container.add(
+                scene.add
+                    .rectangle(
+                        cursorX + part.col * cell + cell / 2,
+                        shapesTop + part.row * cell + cell / 2,
+                        cell - 3 * S,
+                        cell - 3 * S,
+                        color
+                    )
+                    .setStrokeStyle(S, 0x3a362f, 0.35)
+            );
+        }
+        container.add(
+            scene.add
+                .text(cursorX + (shape.bounds.cols * cell) / 2, shapesTop + tallest + 26 * S, getShapeName(shape.id), {
+                    fontFamily: 'Arial Black',
+                    fontSize: 18 * S,
+                    color: '#3a362f',
+                })
+                .setOrigin(0.5)
+        );
+        cursorX += shape.bounds.cols * cell + PREVIEW_GAP * S;
+    }
+
+    // Pop in with an overshoot, hold, then shrink back (a slight anticipation, then away).
+    scene.tweens.add({
+        targets: container,
+        scale: 1,
+        duration: POP_IN_MS,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+            scene.time.delayedCall(HOLD_MS, () => {
+                scene.tweens.add({
+                    targets: container,
+                    scale: 0,
+                    duration: SHRINK_MS,
+                    ease: 'Back.easeIn',
+                    onComplete: () => {
+                        container.destroy();
+                        blocker.destroy();
+                        if (onDone)
+                        {
+                            onDone();
+                        }
+                    },
+                });
+            });
+        },
+    });
+}

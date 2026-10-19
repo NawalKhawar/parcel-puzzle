@@ -177,6 +177,111 @@ export function loadLevels(rawLevels) {
 }
 
 /**
+ * @typedef {Object} RawShapeLevel
+ * @property {string} id
+ * @property {string[]} newShapes - shapes introduced at this level (usually empty).
+ * @property {string[]} allowedShapes - every shape any puzzle in this level may use.
+ * @property {Array<{id: string, label: string, amount: number}>} [bonuses] - one-off bonuses paid
+ *   at the end of the level (e.g. a first-day bonus), shown on the end-of-day popup.
+ * @property {Array<{id: string, difficulty: 'easy' | 'medium' | 'hard', puzzles: RawTruck[]}>} trucks -
+ *   each truck is a SLOT holding a pool of alternative puzzles of that difficulty.
+ */
+
+/**
+ * Validates the shape-gated data set (levels.shapes.json): the same levels/trucks layout as
+ * levels.json, except each truck is a slot holding a POOL of alternative puzzles, and each
+ * level lists which shapes it allows. Checks the structure, runs every puzzle through
+ * loadTruck (grid size, blocked cells, known shapes, exact cell count...), and checks that
+ *   - every puzzle only uses its level's allowed shapes,
+ *   - every puzzle has the difficulty label of its slot,
+ *   - ids are unique across the whole file (levels, trucks and puzzles).
+ * Whether the shape-progression plan itself is right (what unlocks when) is checked by the
+ * tests, not here.
+ *
+ * @param {RawShapeLevel[]} rawLevels
+ * @returns {RawShapeLevel[]} the same array, every entry proven valid.
+ * @throws {Error} naming the offending level/truck/puzzle and the rule it broke.
+ */
+export function loadShapeLevels(rawLevels) {
+    if (!Array.isArray(rawLevels) || rawLevels.length === 0) {
+        throw new Error(`Invalid shape level set: expected a non-empty array, got ${JSON.stringify(rawLevels)}`);
+    }
+
+    const seenIds = new Set();
+    const claim = (id, what) => {
+        if (typeof id !== 'string' || id.length === 0) {
+            throw new Error(`${what} needs a non-empty string "id" (got ${JSON.stringify(id)})`);
+        }
+        if (seenIds.has(id)) {
+            throw new Error(`Duplicate id "${id}" - ids must be unique across the whole shape level set`);
+        }
+        seenIds.add(id);
+    };
+
+    for (const level of rawLevels) {
+        claim(level && level.id, 'Level');
+        const levelLabel = `level "${level.id}"`;
+
+        for (const key of ['allowedShapes', 'newShapes']) {
+            if (!Array.isArray(level[key])) {
+                throw new Error(`${levelLabel}: "${key}" must be an array`);
+            }
+            for (const shapeId of level[key]) {
+                if (!isKnownShape(shapeId)) {
+                    throw new Error(`${levelLabel}: unknown shape id "${shapeId}" in "${key}"`);
+                }
+            }
+        }
+        for (const shapeId of level.newShapes) {
+            if (!level.allowedShapes.includes(shapeId)) {
+                throw new Error(`${levelLabel}: new shape "${shapeId}" must also be in "allowedShapes"`);
+            }
+        }
+        if (level.bonuses !== undefined) {
+            if (!Array.isArray(level.bonuses)) {
+                throw new Error(`${levelLabel}: "bonuses", if present, must be an array`);
+            }
+            for (const bonus of level.bonuses) {
+                if (!bonus || typeof bonus.label !== 'string' || bonus.label.length === 0) {
+                    throw new Error(`${levelLabel}: every bonus needs a non-empty "label" (got ${JSON.stringify(bonus)})`);
+                }
+                if (!Number.isInteger(bonus.amount) || bonus.amount <= 0) {
+                    throw new Error(`${levelLabel}: bonus "${bonus.label}" needs a positive integer "amount" (got ${JSON.stringify(bonus.amount)})`);
+                }
+            }
+        }
+        if (!Array.isArray(level.trucks) || level.trucks.length === 0) {
+            throw new Error(`${levelLabel}: "trucks" must be a non-empty array`);
+        }
+
+        for (const truck of level.trucks) {
+            claim(truck && truck.id, `Truck in ${levelLabel}`);
+            const truckLabel = `truck "${truck.id}"`;
+            if (!['easy', 'medium', 'hard'].includes(truck.difficulty)) {
+                throw new Error(`${truckLabel}: "difficulty" must be one of 'easy' | 'medium' | 'hard' (got ${JSON.stringify(truck.difficulty)})`);
+            }
+            if (!Array.isArray(truck.puzzles) || truck.puzzles.length === 0) {
+                throw new Error(`${truckLabel}: "puzzles" must be a non-empty array`);
+            }
+
+            for (const puzzle of truck.puzzles) {
+                loadTruck(puzzle); // grid size, blocked cells, known shapes, exact cell count, reward...
+                claim(puzzle.id, `Puzzle in ${truckLabel}`);
+                if (puzzle.difficulty !== truck.difficulty) {
+                    throw new Error(`puzzle "${puzzle.id}": difficulty "${puzzle.difficulty}" does not match its truck slot's "${truck.difficulty}"`);
+                }
+                for (const shapeId of puzzle.pieces) {
+                    if (!level.allowedShapes.includes(shapeId)) {
+                        throw new Error(`puzzle "${puzzle.id}": uses shape "${shapeId}", which ${levelLabel} does not allow`);
+                    }
+                }
+            }
+        }
+    }
+    return rawLevels;
+}
+
+/**
  * Convenience constructor: builds a fresh Grid (blocked cells set, nothing placed) for a
  * validated truck, ready for the solver or the Phaser scene to place pieces into. Does
  * not re-validate - call loadTruck/loadLevels first.

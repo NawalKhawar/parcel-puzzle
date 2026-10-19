@@ -9,7 +9,10 @@
  * non-zero if anything is wrong, naming the offending truck, so a broken or unsolvable
  * puzzle can never silently reach the game.
  *
- * Usage: node scripts/validate-levels.js
+ * Usage:
+ *   node scripts/validate-levels.js            checks src/data/levels.json
+ *   node scripts/validate-levels.js --shapes   checks src/data/levels.shapes.json instead
+ *                                              (the shape-gated pool: every puzzle of every slot)
  *
  * Must never import 'phaser' - this runs in plain Node, no browser/game instance
  * required. See "Architectural boundary" in PROJECT_STRUCTURE.md.
@@ -19,11 +22,12 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { loadLevels, createGridForTruck } from '../src/data/loadLevel.js';
+import { loadLevels, loadShapeLevels, createGridForTruck } from '../src/data/loadLevel.js';
 import { solve } from '../src/core/Solver.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LEVELS_PATH = path.resolve(__dirname, '../src/data/levels.json');
+const SHAPES_PATH = path.resolve(__dirname, '../src/data/levels.shapes.json');
 
 /**
  * Classifies a solve() result into "unique / 2 or more / unsolvable" buckets.
@@ -42,12 +46,15 @@ function classifySolutions(result) {
 }
 
 async function main() {
+    const useShapes = process.argv.includes('--shapes');
+    const dataPath = useShapes ? SHAPES_PATH : LEVELS_PATH;
+
     let rawLevels;
     try {
-        const text = await readFile(LEVELS_PATH, 'utf8');
+        const text = await readFile(dataPath, 'utf8');
         rawLevels = JSON.parse(text);
     } catch (err) {
-        console.error(`Failed to read/parse ${LEVELS_PATH}: ${err.message}`);
+        console.error(`Failed to read/parse ${dataPath}: ${err.message}`);
         process.exitCode = 1;
         return;
     }
@@ -59,19 +66,25 @@ async function main() {
     try {
         // loadLevels validates schema (rows/cols, blocked bounds, known shape ids,
         // exact-cover cell count, unique ids) and throws on the first problem found.
-        levels = loadLevels(rawLevels);
+        levels = useShapes ? loadShapeLevels(rawLevels) : loadLevels(rawLevels);
     } catch (err) {
         console.error(`Level set failed schema validation: ${err.message}`);
         process.exitCode = 1;
         return;
     }
 
-    const truckTotal = levels.reduce((sum, level) => sum + level.trucks.length, 0);
-    console.log(`Validating ${levels.length} level(s) / ${truckTotal} truck(s) from ${path.relative(process.cwd(), LEVELS_PATH)}\n`);
+    // Flatten to the list of actual puzzles to solve: the trucks of levels.json, or every
+    // puzzle in every slot's pool for levels.shapes.json.
+    const truckTotal = useShapes
+        ? levels.reduce((sum, level) => sum + level.trucks.reduce((n, truck) => n + truck.puzzles.length, 0), 0)
+        : levels.reduce((sum, level) => sum + level.trucks.length, 0);
+    const noun = useShapes ? 'puzzle' : 'truck';
+    console.log(`Validating ${levels.length} level(s) / ${truckTotal} ${noun}(s) from ${path.relative(process.cwd(), dataPath)}\n`);
 
     const rows = [];
     for (const level of levels) {
-        for (const truck of level.trucks) {
+        const toSolve = useShapes ? level.trucks.flatMap((slot) => slot.puzzles) : level.trucks;
+        for (const truck of toSolve) {
             const grid = createGridForTruck(truck);
             const result = solve(grid, truck.pieces, { maxSolutions: 2, maxNodes: 500000 });
             const classification = classifySolutions(result);
@@ -108,13 +121,13 @@ async function main() {
 
     console.log();
     if (failures.length > 0) {
-        console.error(`${failures.length} truck(s) failed validation:`);
+        console.error(`${failures.length} ${noun}(s) failed validation:`);
         for (const f of failures) {
             console.error(`  - ${f}`);
         }
         process.exitCode = 1;
     } else {
-        console.log(`All ${truckTotal} truck(s) across ${levels.length} level(s) solvable.`);
+        console.log(`All ${truckTotal} ${noun}(s) across ${levels.length} level(s) solvable.`);
         process.exitCode = 0;
     }
 }
