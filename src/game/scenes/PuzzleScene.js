@@ -2,12 +2,13 @@ import { Scene } from 'phaser';
 
 import { loadShapeLevels, createGridForTruck } from '../../data/loadLevel.js';
 import { pickDayPuzzles } from '../../data/pickDayPuzzles.js';
-import { getShapeBounds } from '../../core/Shape.js';
 import { findHint } from '../../core/Solver.js';
+import { computeTrayLayout } from '../../core/TrayLayout.js';
 import shapeLevelsRaw from '../../data/levels.shapes.json';
 import { GridView } from '../objects/GridView.js';
 import { PieceView } from '../objects/PieceView.js';
 import { showNewPieceIntro } from '../objects/NewPieceIntro.js';
+import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -55,7 +56,7 @@ import { UI_SCALE } from '../uiScale.js';
  * 'dayEarned' (reset whenever truck 0 of a level begins - see init()) and 'totalEarned',
  * the all-time pay count, which is NOT reset between days (only TitleScene's Play
  * resets it). The coin HUD shows that all-time total (createHud()); finishing a truck
- * that isn't the day's last shows WinScene, while the day's last truck shows
+ * that isn't the day's last goes straight on to the next truck, while the day's last shows
  * DayCompleteScene (see handleWin()), which offers Shop / Decorate / Next Day.
  *
  * From the second level onwards a Hint button is shown (createHud()): pressing it
@@ -82,23 +83,87 @@ const MAX_CELL_SIZE = 72 * UI_SCALE;
  *  taller than the screen has room for. A board is never drawn taller than this: tall
  *  boards get a smaller cell size instead (see create()), keeping room for the tray. */
 const BOARD_MAX_HEIGHT = 360 * UI_SCALE;
-const TRAY_PIECE_GAP = 24 * UI_SCALE;
-const TRAY_TOP_MARGIN = 64 * UI_SCALE;
-const TRAY_SIDE_MARGIN = 40 * UI_SCALE;
-const TRAY_BOTTOM_MARGIN = 40 * UI_SCALE;
 
-/** The smallest a level's tray pieces are ever shrunk to in order to fit on screen
- *  (see layoutTray) — below this, pieces would become too small to comfortably grab. */
-const TRAY_MIN_SCALE = 0.5;
+/**
+ * The artwork (assets/) is drawn at twice the design size for sharpness, so one art pixel is this
+ * many game pixels. Everything sized from an image below is "art pixels x ART_SCALE".
+ */
+const ART_SCALE = UI_SCALE / 2;
 
-/** Shared placeholder styling for the Undo/Reset/Pause HUD buttons (Milestone 7) — Milestone 10 replaces these with real art. */
-const HUD_BUTTON_STYLE = {
-    fontFamily: 'Arial',
-    fontSize: 16 * UI_SCALE,
-    color: '#3a362f',
-    backgroundColor: '#f0e4cc',
-    padding: { x: 12 * UI_SCALE, y: 8 * UI_SCALE },
-};
+/**
+ * THE CONVEYOR BELT (assets/conveyor-belt-dark.png, 2560x800 art pixels).
+ *
+ * It fills the whole lower band of the screen: the full 1280 design width, and a height of at
+ * most BELT_MAX_HEIGHT (230) so the biggest truck still fits above it. If the artwork's own
+ * proportions would be taller than that it is squashed to fit, so export the art at about
+ * 2560x440 (see README). The numbers below locate the dark belt surface inside the image: from
+ * 5% to 87% of its height, centred at 46%, and about 90% of its width is usable.
+ */
+const BELT_MAX_HEIGHT = 230 * UI_SCALE;
+/** The belt is pushed this far below the screen's bottom edge, so its lower rollers are cut off and
+ *  it looks like it runs on past the edge of the screen. */
+const BELT_BOTTOM_CLIP = 22 * UI_SCALE;
+const BELT_SURFACE_TOP = 0.05;
+const BELT_SURFACE_BOTTOM = 0.87;
+const BELT_SURFACE_CENTER = 0.46;
+const BELT_USABLE_WIDTH = 0.9;
+
+/** How the parcels sit on the belt: a single row, drawn at about this size per cell (well below
+ *  the board's 72, so they fit), with a small gap - or, when crowded, a slight overlap (see
+ *  core/TrayLayout.js). On the board a piece is the board's cell size; it grows when picked up.
+ *  Measured over all 800 puzzles: at 42 about a third overlap at all and none shrink below 77% of
+ *  this; at 50 nearly half overlap; at 34 hardly any do but the parcels get hard to grab. */
+const TRAY_CELL_SIZE = 52 * UI_SCALE;
+const TRAY_PIECE_GAP = 8 * UI_SCALE;
+const TRAY_MAX_OVERLAP_FRACTION = 0; // parcels never overlap: a crowded row shrinks instead
+const TRAY_MAX_OVERLAP = 0;
+/** The row may shrink to this fraction of its preferred size, no further. */
+const TRAY_MIN_RELATIVE_SCALE = 0.5;
+/** The tallest parcel may use at most this fraction of the belt surface's height. */
+const TRAY_MAX_HEIGHT_FRACTION = 0.9;
+
+/**
+ * THE TRUCK (assets/truck-with-wheels.png, 912x984 art pixels): a frame around a grey opening,
+ * with wheels under it. It is stretched to fit each board with a 9-slice: the four margins below
+ * (in art pixels) never stretch - they hold the corners, bumper, tail lights and wheels - while
+ * the plain strips between them stretch to make the frame as wide and tall as the board needs.
+ * The bottom margin is the bumper bar plus the wheels. For a 5x5 board at full cell size the
+ * opening is exactly the artwork's own 720x720, so nothing is stretched.
+ */
+const TRUCK_MARGINS = { left: 96, right: 96, top: 96, bottom: 168 };
+/** How far the bottom of the truck (its wheels) tucks behind the belt's back rail. */
+const TRUCK_BELT_OVERLAP = 12 * UI_SCALE;
+/** The truck never gets closer than this to the top of the screen: if a board is so tall that the
+ *  truck would, the cells shrink instead (see create()). Shorter trucks simply stand on the belt. */
+const TRUCK_TOP_MARGIN = 10 * UI_SCALE;
+
+/**
+ * The soft shadow the bumper casts on the tops of the wheels, so they look tucked under the truck.
+ * Measured on assets/truck-with-wheels.png (art pixels): the bumper ends 74 px above the image's
+ * bottom edge, the left wheel spans x 24-95 and the right wheel 25-96 in from the right edge. The
+ * shadow is a few stacked bands that fade out going down, each a transparent dark block.
+ */
+const WHEEL_TOP_FROM_BOTTOM = 74;
+const WHEEL_SPANS = [{ fromLeft: 24, width: 72 }, { fromRight: 25, width: 72 }];
+const WHEEL_SHADOW_BANDS = [0.55, 0.38, 0.22, 0.1]; // opacity of each band, top to bottom
+const WHEEL_SHADOW_BAND_HEIGHT = 7; // art pixels per band
+
+/** Draw depths (higher is in front): the truck, then the belt, then everything else at 0 and up. */
+const TRUCK_DEPTH = -20;
+const BELT_DEPTH = -10;
+const PLACED_DEPTH = 10; // parcels on the board
+const SHUTTER_DEPTH = 60; // covers the board, over the parcels placed on it
+const DRAG_DEPTH = 500; // the parcel being carried
+
+/** How long the shutter takes to roll down, and how long it rests before the overlay appears (ms). */
+const SHUTTER_CLOSE_MS = 200;
+const SHUTTER_HOLD_MS = 60;
+/** The little bounce the truck gives when the shutter lands: total time, and how far it dips (px). */
+const TRUCK_BOB_MS = 260;
+const TRUCK_BOB_PX = 5 * UI_SCALE;
+
+/** Size (design pixels) of the square HUD icon buttons (assets/*-icon.png are 96x96, drawn at half). */
+const HUD_BUTTON_SIZE = 48 * UI_SCALE;
 
 /** Coins awarded for completing a truck whose data doesn't set its own `reward` (see
  *  levels.schema.md) — every puzzle actually shipped in levels.shapes.json sets one explicitly,
@@ -114,7 +179,7 @@ export class PuzzleScene extends Scene
 
     /**
      * Phaser calls init(data) before create(), with whatever data object was passed to
-     * scene.start()/scene.launch() — TitleScene's Play button, WinScene's "Next Truck"
+     * scene.start()/scene.launch() — TitleScene's Play button, handleWin()'s hop to the next truck
      * button and DayCompleteScene's "Next Day" button all pass { levelIndex, truckIndex }
      * here to say which truck to play. Defaults to level 1, truck 1 if started with no data.
      *
@@ -158,30 +223,92 @@ export class PuzzleScene extends Scene
         this.truck = truck;
         this.grid = createGridForTruck(truck);
 
-        // One cell size is used for the board and the tray (see the note on
-        // MAX_CELL_SIZE). Normally the maximum, but shrunk for tall boards so the board
-        // never exceeds BOARD_MAX_HEIGHT (e.g. a 7-row board gets ~51px cells, not 72px).
-        this.cellSize = Math.min(MAX_CELL_SIZE, BOARD_MAX_HEIGHT / truck.rows);
+        // Input is switched off while a truck closes (see handleWin); this scene instance is
+        // reused for the next truck, so make sure it is back on.
+        this.input.enabled = true;
+
+        // The conveyor belt fills the whole lower band, behind everything but the truck.
+        const belt = this.add.image(this.scale.width / 2, this.scale.height + BELT_BOTTOM_CLIP, 'conveyor-belt-dark').setOrigin(0.5, 1);
+        const beltHeight = Math.min(BELT_MAX_HEIGHT, this.scale.width * (belt.height / belt.width));
+        belt.setDisplaySize(this.scale.width, beltHeight).setDepth(BELT_DEPTH);
+        this.belt = belt;
+        const beltTop = belt.y - beltHeight;
+
+        // One cell size is used for the board and the tray (see the note on MAX_CELL_SIZE).
+        // Normally the maximum, but shrunk for tall boards so the board never exceeds
+        // BOARD_MAX_HEIGHT, and further if the truck (board + its fixed frame) would not fit
+        // between the top margin and the belt.
+        const frameHeight = (TRUCK_MARGINS.top + TRUCK_MARGINS.bottom) * ART_SCALE;
+        const roomForBoard = beltTop + TRUCK_BELT_OVERLAP - TRUCK_TOP_MARGIN - frameHeight;
+        this.cellSize = Math.min(MAX_CELL_SIZE, BOARD_MAX_HEIGHT / truck.rows, roomForBoard / truck.rows);
 
         const boardPixelWidth = truck.cols * this.cellSize;
+        const boardPixelHeight = truck.rows * this.cellSize;
+
+        // The truck, stretched to fit this board. Its size in art pixels is the board (converted
+        // from game pixels to art pixels) plus the fixed margins; it stands with its wheels just
+        // behind the belt, and the board goes where the grey opening is.
+        const truckArtWidth = boardPixelWidth / ART_SCALE + TRUCK_MARGINS.left + TRUCK_MARGINS.right;
+        const truckArtHeight = boardPixelHeight / ART_SCALE + TRUCK_MARGINS.top + TRUCK_MARGINS.bottom;
+        // Always standing on the belt, so each truck grows upward into the empty space above it;
+        // the cell-size limit above guarantees it never reaches the top margin.
+        const truckTop = beltTop + TRUCK_BELT_OVERLAP - truckArtHeight * ART_SCALE;
         const boardX = (this.scale.width - boardPixelWidth) / 2;
-        const boardY = 56 * UI_SCALE;
+        const boardY = truckTop + TRUCK_MARGINS.top * ART_SCALE;
+        this.truckFrame = this.add
+            .nineslice(
+                boardX - TRUCK_MARGINS.left * ART_SCALE,
+                truckTop,
+                'truck-with-wheels',
+                undefined,
+                truckArtWidth,
+                truckArtHeight,
+                TRUCK_MARGINS.left,
+                TRUCK_MARGINS.right,
+                TRUCK_MARGINS.top,
+                TRUCK_MARGINS.bottom
+            )
+            .setOrigin(0, 0)
+            .setScale(ART_SCALE)
+            .setDepth(TRUCK_DEPTH);
+
+        // Shadow on the wheel tops. Drawn just in front of the truck (still behind the belt).
+        const truckLeft = this.truckFrame.x;
+        const truckRight = truckLeft + truckArtWidth * ART_SCALE;
+        const wheelTop = truckTop + (truckArtHeight - WHEEL_TOP_FROM_BOTTOM) * ART_SCALE;
+        this.wheelShadow = this.add.graphics().setDepth(TRUCK_DEPTH + 1);
+        for (const wheel of WHEEL_SPANS)
+        {
+            const x = wheel.fromLeft !== undefined
+                ? truckLeft + wheel.fromLeft * ART_SCALE
+                : truckRight - (wheel.fromRight + wheel.width) * ART_SCALE;
+            WHEEL_SHADOW_BANDS.forEach((alpha, i) => {
+                this.wheelShadow.fillStyle(0x000000, alpha);
+                this.wheelShadow.fillRect(
+                    x,
+                    wheelTop + 1 * ART_SCALE + i * WHEEL_SHADOW_BAND_HEIGHT * ART_SCALE,
+                    wheel.width * ART_SCALE,
+                    WHEEL_SHADOW_BAND_HEIGHT * ART_SCALE
+                );
+            });
+        }
 
         this.gridView = new GridView(this, boardX, boardY, this.grid, this.cellSize);
 
-        // "Level N · Truck k/total" header. The truck total is read from the level's own
-        // truck list, so it stays correct automatically as levels are edited (no separate
-        // constant to keep in sync). Difficulty is shown too, which makes the ramp visible.
+        // "Level N · Truck k/total" header, top right (the truck can reach the top-centre of
+        // the screen on tall boards). The truck total is read from the level's own truck list, so
+        // it stays correct automatically as levels are edited. Difficulty is shown too, which
+        // makes the ramp visible.
         const trucksTotal = this.levelData.trucks.length;
         this.add
-            .text(this.scale.width / 2, 24 * UI_SCALE, `Level ${this.levelIndex + 1}  ·  Truck ${this.truckIndex + 1}/${trucksTotal}  ·  ${truck.difficulty ?? ''}`, {
+            .text(this.scale.width - 24 * UI_SCALE, 28 * UI_SCALE, `Level ${this.levelIndex + 1}  ·  Truck ${this.truckIndex + 1}/${trucksTotal}  ·  ${truck.difficulty ?? ''}`, {
                 fontFamily: 'Arial',
                 fontSize: 20 * UI_SCALE,
                 color: '#3a362f',
             })
-            .setOrigin(0.5);
+            .setOrigin(1, 0.5);
 
-        this.layoutTray(boardY + this.gridView.pixelHeight);
+        this.layoutTray();
         this.wireDragEvents();
         this.createHud();
 
@@ -229,115 +356,68 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * Lays out one PieceView per entry in the level's piece list, left to right,
-     * wrapping to a new row if the tray would otherwise run off the right edge of the
-     * screen. Each piece's final tray position is remembered as its "home" — where it
-     * snaps back to on an invalid drop (see wireDragEvents' dragend handler).
+     * Lays the level's parcels out in a single row along the conveyor belt, centred on the
+     * belt surface, left to right. Each piece's position is remembered as its "home" — where it
+     * goes back to when it is dropped somewhere illegal or taken off the board (see
+     * wireDragEvents / returnToTray).
      *
-     * Levels with enough pieces can wrap onto several tray rows, and this game has no
-     * way to scroll down to reach rows that run past the bottom of the screen — so
-     * before placing anything, this first probes (via measureTrayLayout, a pure
-     * simulation that doesn't create any PieceViews) whether the full tray fits in the
-     * vertical space left below the board at true size, and if not, tries progressively
-     * smaller uniform scales until one does (or TRAY_MIN_SCALE is reached). Every piece
-     * in a level is shrunk by the same amount, so the tray stays visually consistent.
-     *
-     * @param {number} boardBottomY - world-space y of the bottom edge of the board, so
-     *   the tray can be positioned below it with a fixed margin.
+     * The size and spacing come from core/TrayLayout.js: parcels are drawn smaller than the
+     * board's cells so they fit on the belt, with a small gap between them; if the row is still
+     * too wide, neighbours overlap slightly (later ones in front, so it reads as parcels sitting
+     * in front of and behind each other, never hiding a shape); only after that do they shrink.
+     * Every piece in a level shares one size.
      */
-    layoutTray (boardBottomY)
+    layoutTray ()
     {
-        this.pieceViews = [];
+        const views = this.truck.pieces.map(
+            (shapeId, index) => new PieceView(this, 0, 0, shapeId, this.cellSize, `tray-${index}`)
+        );
+        this.pieceViews = views;
 
-        const trayStartX = TRAY_SIDE_MARGIN;
-        const trayStartY = boardBottomY + TRAY_TOP_MARGIN;
-        const maxTrayRight = this.scale.width - TRAY_SIDE_MARGIN;
-        const availableHeight = this.scale.height - trayStartY - TRAY_BOTTOM_MARGIN;
+        const beltTop = this.belt.y - this.belt.displayHeight;
+        const surfaceCenterY = beltTop + this.belt.displayHeight * BELT_SURFACE_CENTER;
+        const surfaceHeight = this.belt.displayHeight * (BELT_SURFACE_BOTTOM - BELT_SURFACE_TOP);
 
-        let trayScale = 1;
-        while (
-            trayScale > TRAY_MIN_SCALE &&
-            this.measureTrayLayout(trayScale, trayStartX, maxTrayRight) > availableHeight
-        )
-        {
-            trayScale = Math.max(TRAY_MIN_SCALE, trayScale - 0.05);
-        }
-
-        let cursorX = trayStartX;
-        let cursorY = trayStartY;
-        let rowHeight = 0;
-
-        this.truck.pieces.forEach((shapeId, index) => {
-            const pieceView = new PieceView(this, cursorX, cursorY, shapeId, this.cellSize, `tray-${index}`);
-            pieceView.setTrayScale(trayScale);
-
-            const width = pieceView.pixelWidth * trayScale;
-            const height = pieceView.pixelHeight * trayScale;
-
-            if (cursorX + width > maxTrayRight && cursorX > trayStartX)
+        const maxScale = Math.min(1, TRAY_CELL_SIZE / this.cellSize);
+        const layout = computeTrayLayout(
+            views.map((view) => ({ width: view.pixelWidth, height: view.pixelHeight })),
             {
-                // Wrap to a new row: move the piece we just created down to the new row.
-                cursorX = trayStartX;
-                cursorY += rowHeight + TRAY_PIECE_GAP;
-                rowHeight = 0;
-                pieceView.container.setPosition(cursorX, cursorY);
+                usableWidth: this.belt.displayWidth * BELT_USABLE_WIDTH,
+                maxScale,
+                minScale: maxScale * TRAY_MIN_RELATIVE_SCALE,
+                maxHeight: surfaceHeight * TRAY_MAX_HEIGHT_FRACTION,
+                gap: TRAY_PIECE_GAP,
+                maxOverlapFraction: TRAY_MAX_OVERLAP_FRACTION,
+                maxOverlapPx: TRAY_MAX_OVERLAP,
             }
+        );
+
+        const rowLeft = (this.scale.width - layout.rowWidth) / 2;
+        views.forEach((view, index) => {
+            view.setTrayScale(layout.scale);
+
+            const homeX = rowLeft + layout.lefts[index];
+            // Centred vertically on the belt (a container's position is its top-left corner).
+            const homeY = surfaceCenterY - (view.pixelHeight * layout.scale) / 2;
+            view.container.setPosition(homeX, homeY);
 
             // Remember where this piece started, so an invalid drop has somewhere to
             // snap back to (see wireDragEvents).
-            pieceView.homeX = cursorX;
-            pieceView.homeY = cursorY;
+            view.homeX = homeX;
+            view.homeY = homeY;
 
-            this.pieceViews.push(pieceView);
-
-            cursorX += width + TRAY_PIECE_GAP;
-            rowHeight = Math.max(rowHeight, height);
+            // Later parcels are drawn in front of earlier ones where they overlap.
+            view.trayDepth = index + 1;
+            view.container.setDepth(view.trayDepth);
         });
     }
 
     /**
-     * Pure simulation of layoutTray's wrapping logic at a given candidate scale,
-     * using the shape vocabulary's own bounding boxes (src/core/Shape.js) rather than
-     * constructing any actual PieceViews — used to probe whether a given tray scale
-     * fits the available vertical space before committing to it.
-     *
-     * @param {number} scale - candidate tray scale to measure at (1 = true size).
-     * @param {number} trayStartX
-     * @param {number} maxTrayRight
-     * @returns {number} total pixel height the tray would need at this scale.
-     */
-    measureTrayLayout (scale, trayStartX, maxTrayRight)
-    {
-        let cursorX = trayStartX;
-        let rowHeight = 0;
-        let totalHeight = 0;
-
-        this.truck.pieces.forEach((shapeId) => {
-            const bounds = getShapeBounds(shapeId);
-            const width = bounds.cols * this.cellSize * scale;
-            const height = bounds.rows * this.cellSize * scale;
-
-            if (cursorX + width > maxTrayRight && cursorX > trayStartX)
-            {
-                cursorX = trayStartX;
-                totalHeight += rowHeight + TRAY_PIECE_GAP;
-                rowHeight = 0;
-            }
-
-            cursorX += width + TRAY_PIECE_GAP;
-            rowHeight = Math.max(rowHeight, height);
-        });
-
-        return totalHeight + rowHeight;
-    }
-
-    /**
-     * Creates the top-left HUD stack shown in the concept art's board reference
-     * (docs/game_concept.pdf): a coin/paycheck display above the Reset/Pause
-     * buttons, all simple placeholder text for now — real styling/iconography is
-     * Milestone 10's job. The buttons are separate, always-interactive GameObjects
-     * (not PieceViews), so they keep working even while Pause has disabled dragging on
-     * every piece.
+     * Creates the top-left HUD: the money panel, with the square icon buttons beside it on the
+     * same row - Reset, Pause and (from level 2) Hint. The money panel is padded to the same
+     * height as the squares, so the row reads as one bar. The buttons are separate,
+     * always-interactive GameObjects (not PieceViews), so they keep working even while Pause
+     * has disabled dragging on every piece.
      */
     createHud ()
     {
@@ -353,23 +433,53 @@ export class PuzzleScene extends Scene
             backgroundColor: '#f6dca0',
             padding: { x: 14 * UI_SCALE, y: 8 * UI_SCALE },
         });
+        // Pad the panel vertically so it is exactly as tall as the icon squares.
+        const lineHeight = this.coinText.height - 16 * UI_SCALE;
+        this.coinText.setPadding({ x: 14 * UI_SCALE, y: (HUD_BUTTON_SIZE - lineHeight) / 2 });
 
-        const makeButton = (y, label, onClick) => {
+        const makeIconButton = (textureKey, onClick) => {
             const button = this.add
-                .text(16 * UI_SCALE, y, label, HUD_BUTTON_STYLE)
+                .image(0, 0, textureKey)
+                .setDisplaySize(HUD_BUTTON_SIZE, HUD_BUTTON_SIZE)
                 .setInteractive({ useHandCursor: true });
-            button.on('pointerdown', onClick);
+            // Squashes when pressed (see objects/pressFeedback.js); these act in place, so no delay.
+            makePressable(this, button, onClick);
             return button;
         };
 
-        makeButton(56 * UI_SCALE, 'Reset', () => this.resetLevel());
-        this.pauseButton = makeButton(96 * UI_SCALE, 'Pause', () => this.togglePause());
+        this.resetButton = makeIconButton('reset-icon', () => this.resetLevel());
+        this.pauseButton = makeIconButton('pause-icon', () => this.togglePause());
 
         // The Hint button only exists from the second level onwards (level index 1+), so
         // the very first day stays hint-free.
         if (this.levelIndex >= 1)
         {
-            this.hintButton = makeButton(136 * UI_SCALE, 'Hint', () => this.useHint());
+            this.hintButton = makeIconButton('hint-icon', () => this.useHint());
+        }
+
+        this.layoutHud();
+    }
+
+    /**
+     * Places the HUD row: the icon buttons sit to the right of the money panel, level with it.
+     * Called once when the HUD is built and again whenever the money total changes, since a
+     * bigger total makes the panel wider.
+     */
+    layoutHud ()
+    {
+        const gap = 8 * UI_SCALE;
+        const y = this.coinText.y;
+
+        let x = this.coinText.x + this.coinText.width + gap;
+        for (const button of [this.resetButton, this.pauseButton, this.hintButton])
+        {
+            if (!button)
+            {
+                continue;
+            }
+            // The buttons are positioned by their centres (so the press squash is centred).
+            button.setPosition(x + HUD_BUTTON_SIZE / 2, y + HUD_BUTTON_SIZE / 2);
+            x += HUD_BUTTON_SIZE + gap;
         }
     }
 
@@ -460,13 +570,13 @@ export class PuzzleScene extends Scene
         pieceView.container.setPosition(snapped.x, snapped.y);
 
         pieceView.markPlaced(row, col);
+        pieceView.container.setDepth(PLACED_DEPTH);
 
         this.refreshHint();
 
-        // hasWon guards against ever launching WinScene twice: once every open
-        // cell is filled, isComplete() keeps returning true, but there are no
-        // more unplaced pieces left to drag anyway — the guard is just cheap
-        // insurance against launching the overlay a second time.
+        // hasWon guards against ever launching the win overlay twice: once every open
+        // cell is filled, isComplete() keeps returning true, but there are no more
+        // unplaced pieces left to drag anyway - the guard is cheap insurance.
         if (!this.hasWon && this.grid.isComplete())
         {
             this.hasWon = true;
@@ -484,9 +594,9 @@ export class PuzzleScene extends Scene
     wireDragEvents ()
     {
         this.input.on('dragstart', (pointer, gameObject) => {
-            // Bring the piece being dragged above every other piece/the board, so it
+            // Draw the piece being dragged above every other piece and the board, so it
             // visibly sits "in hand" rather than being occluded while moving over them.
-            this.children.bringToTop(gameObject);
+            gameObject.setDepth(DRAG_DEPTH);
 
             // Grabbing a piece that is on the board takes it off the Grid straight away, so
             // its own old cells don't count as occupied when it is dropped back nearby.
@@ -596,6 +706,7 @@ export class PuzzleScene extends Scene
     {
         pieceView.unlock();
         pieceView.container.setPosition(pieceView.homeX, pieceView.homeY);
+        pieceView.container.setDepth(pieceView.trayDepth);
     }
 
     /**
@@ -667,7 +778,8 @@ export class PuzzleScene extends Scene
             }
         }
 
-        this.pauseButton.setText(this.isPaused ? 'Resume' : 'Pause');
+        // There is no separate "resume" icon, so the button is dimmed while the game is paused.
+        this.pauseButton.setTint(this.isPaused ? 0xb8b0a0 : 0xffffff);
 
         if (this.isPaused)
         {
@@ -699,12 +811,11 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * Called once, the moment the board's last open cell is filled. Pauses this scene
-     * (so the completed board can't be interacted with further — no more dragging
-     * pieces that are, in any case, already all placed), credits this truck's reward
-     * to the day's running totals kept in the registry (see the class doc), and routes
-     * to whichever overlay fits: WinScene if another truck follows today (its button
-     * starts that truck), or — after the day's last truck — DayCompleteScene with the
+     * Called once, the moment the board's last open cell is filled. Credits this truck's reward
+     * to the day's running totals kept in the registry (see the class doc), switches input off
+     * (so the completed board can't be interacted with further), closes the truck (the shutter
+     * animation, see closeTruck()), then pauses this scene and routes on: straight into the next truck if another follows today (no
+     * overlay), or — after the day's last truck — DayCompleteScene with the
      * day's totals (trucks completed, truck earnings, any end-of-level bonuses, total earned)
      * and its Shop/Decorate/Next Day buttons.
      *
@@ -737,32 +848,117 @@ export class PuzzleScene extends Scene
 
         // Keep the HUD counter (visible dimmed behind the overlay) in step with the popup.
         this.coinText.setText(`$${totalEarned}`);
+        this.layoutHud();
 
         this.gridView.clearHint();
 
-        this.scene.pause();
+        // Close the truck (the shutter rolls down over the board and the parcels), and only then
+        // show the overlay. Input is switched off meanwhile, or a parcel could be picked up off
+        // the board while the shutter is coming down.
+        this.input.enabled = false;
+        this.closeTruck(() => {
+            if (isLastTruck)
+            {
+                this.scene.pause();
+                this.scene.launch('DayCompleteScene', {
+                    levelIndex: this.levelIndex,
+                    trucksCompleted,
+                    truckEarnings: dayEarned,
+                    bonuses,
+                    earned: dayEarned + bonusTotal,
+                    isLastLevel: this.levelIndex === this.levels.length - 1,
+                });
+            }
+            else
+            {
+                // Straight on to the next truck of the day - no overlay in between.
+                this.scene.start('PuzzleScene', { levelIndex: this.levelIndex, truckIndex: this.truckIndex + 1 });
+            }
+        });
+    }
 
-        if (isLastTruck)
-        {
-            this.scene.launch('DayCompleteScene', {
-                levelIndex: this.levelIndex,
-                trucksCompleted,
-                truckEarnings: dayEarned,
-                bonuses,
-                earned: dayEarned + bonusTotal,
-                isLastLevel: this.levelIndex === this.levels.length - 1,
-            });
-        }
-        else
-        {
-            this.scene.launch('WinScene', {
-                truckNumber: this.truckIndex + 1,
-                trucksTotal,
-                reward,
-                totalEarned,
-                levelIndex: this.levelIndex,
-                nextTruckIndex: this.truckIndex + 1,
-            });
-        }
+    /**
+     * The "truck is closed" moment: the shutter (assets/truck-shutter.png, 720x720 art pixels, the
+     * size of the largest board) slides down over the board and the parcels in it, then rests
+     * briefly, then `onDone` is called.
+     *
+     * The shutter is bigger than or equal to any board, so instead of resizing it, it is
+     * CROPPED to the board's opening: as it slides, only the part of the image that is inside the
+     * opening is shown. It starts with its bottom edge at the top of the opening (nothing visible)
+     * and ends with its bottom edge - the handle - at the bottom of the opening, covering it.
+     *
+     * @param {() => void} onDone - called once the shutter has closed and rested.
+     */
+    closeTruck (onDone)
+    {
+        const openingX = this.gridView.x;
+        const openingY = this.gridView.y;
+        const openingWidth = this.gridView.pixelWidth;
+        const openingHeight = this.gridView.pixelHeight;
+
+        const shutter = this.add.image(0, 0, 'truck-shutter').setOrigin(0, 0).setScale(ART_SCALE).setDepth(SHUTTER_DEPTH);
+        const size = shutter.displayWidth; // the shutter is square
+        const left = openingX + openingWidth / 2 - size / 2;
+        this.shutter = shutter;
+
+        /** Puts the shutter's top edge at y and shows only the part inside the opening. */
+        const place = (y) => {
+            shutter.setPosition(left, y);
+            const visibleTop = Math.max(openingY, y);
+            const visibleBottom = Math.min(openingY + openingHeight, y + size);
+            if (visibleBottom <= visibleTop)
+            {
+                shutter.setVisible(false);
+                return;
+            }
+            shutter.setVisible(true);
+            // setCrop works in the image's own (art) pixels, measured from its top-left corner.
+            shutter.setCrop(
+                (openingX - left) / ART_SCALE,
+                (visibleTop - y) / ART_SCALE,
+                openingWidth / ART_SCALE,
+                (visibleBottom - visibleTop) / ART_SCALE
+            );
+        };
+
+        const startY = openingY - size; // bottom edge at the top of the opening: not visible yet
+        const endY = openingY + openingHeight - size; // bottom edge at the bottom of the opening
+        place(startY);
+
+        this.tweens.addCounter({
+            from: startY,
+            to: endY,
+            duration: SHUTTER_CLOSE_MS,
+            ease: 'Cubic.easeIn', // speeds up as it falls, like a shutter being let go
+            onUpdate: (tween) => place(tween.getValue()),
+            onComplete: () => {
+                place(endY);
+                this.bobTruck();
+                this.time.delayedCall(TRUCK_BOB_MS + SHUTTER_HOLD_MS, onDone);
+            },
+        });
+    }
+
+    /**
+     * The truck's "thunk" as the shutter lands: the truck, its shutter, the board and every parcel
+     * on it dip down a few pixels and come back up, as if the shutter had pushed the truck down on
+     * landing. One sine half-wave driven by a counter, so everything moves in lockstep.
+     */
+    bobTruck ()
+    {
+        const movers = [this.truckFrame, this.wheelShadow, this.shutter, this.gridView.container, ...this.pieceViews.map((v) => v.container ?? v)];
+        const starts = movers.map((m) => ({ x: m.x, y: m.y }));
+        this.tweens.addCounter({
+            from: 0,
+            to: 1,
+            duration: TRUCK_BOB_MS,
+            onUpdate: (tween) => {
+                const t = tween.getValue();
+                // One smooth dip down and back up (sine half-wave), straight down - no sideways shake.
+                const dy = Math.sin(t * Math.PI) * TRUCK_BOB_PX;
+                movers.forEach((m, i) => m.setPosition(starts[i].x, starts[i].y + dy));
+            },
+            onComplete: () => movers.forEach((m, i) => m.setPosition(starts[i].x, starts[i].y)),
+        });
     }
 }

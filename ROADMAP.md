@@ -215,9 +215,9 @@ tracked separately once the puzzle core is approved).
 
 ---
 
-## Milestones 9.1 - 9.10 — Additions Requested After Milestone 9
+## Milestones 9.1 - 9.17 — Additions Requested After Milestone 9
 These were requested directly after Milestone 9 was finished, so they sit between
-Milestone 9 and Milestone 10 rather than being renumbered. All ten are **done**; their
+Milestone 9 and Milestone 10 rather than being renumbered. All seventeen are **done**; their
 detailed decisions are in `TRACKER.md`'s Decision Log. Together they turn the single
 "shift" of Milestone 9 into the real game structure: **30 levels (days), each made of
 several trucks (puzzles)**, with a title screen at the front and a shop/apartment at the
@@ -229,8 +229,8 @@ back of each day.
 **Deliverables:**
 - `TitleScene` ("Parcel Packing Puzzle" + a Play button that starts level 1, truck 1).
 - Each truck's header reads "Level N · Truck k/total".
-- Between trucks, `WinScene` shows the reward and the pay count; after a day's last truck,
-  `DayCompleteScene` shows trucks completed + earnings with **Shop / Decorate / Next Day**
+- Trucks of the same day follow each other with no pop-up in between (the shutter closes and the
+  next truck starts); after a day's last truck, `DayCompleteScene` shows trucks completed + earnings with **Shop / Decorate / Next Day**
   (Next Day becomes **Finish** after level 30, returning to the title).
 - The pay count carries over between days (it only resets on a new game).
 
@@ -312,9 +312,10 @@ shapes only appear in later levels - the data needed to build the new shape prog
 **Deliverables:**
 - `src/data/levels.shapes.json`: 800 puzzles, same level structure as `levels.json` (same
   trucks per day, same easy/medium/hard order) but each truck slot holds a **pool of 5**
-  alternative puzzles. Levels 1-2 use only the simple shapes (dot, domino_h, domino_v,
-  tri_i, square, bar4); level 3 adds tri_l and l4; levels 8, 13, 18 and 23 add t4, s4, p5
-  and plus. At a level that introduces shapes, every puzzle contains at least one.
+  alternative puzzles. Levels 1-3 use only the simple shapes (dot, domino_h, domino_v,
+  tri_i, square, bar4); level 4 adds tri_l and l4; levels 7, 10, 13 and 16 add t4, s4, p5
+  and plus (originally levels 1-2 / 3 / 8, 13, 18, 23 - changed in Milestones 9.12 and 9.17). At a level
+  that introduces shapes, every puzzle contains at least one.
 - `generate-levels.js --shape-gated [--pool=N]` builds it (the normal `levels.json` output
   is unchanged), `loadShapeLevels` validates it, `validate-levels.js --shapes` solves every
   puzzle, and `tests/data/shapeLevels.test.js` locks the unlock plan in.
@@ -335,7 +336,7 @@ levels - still 30 levels with the same trucks per day and easy/medium/hard order
   unlocked shapes).
 
 **DoD:** Playing from the title screen shows puzzles from the pools; level 1-2 puzzles only
-use simple shapes; new shapes first appear at levels 3, 8, 13, 18 and 23.
+use simple shapes; new shapes first appear at levels 4, 7, 10, 13 and 16.
 `levels.json` is no longer played; it stays as the original reference set for the generator,
 validator and tests.
 
@@ -352,7 +353,7 @@ validator and tests.
   where it was. This replaces the **Undo button, which is removed** (moving pieces by hand
   does the job without a fixed button); Reset and Pause stay. Placed pieces use an exact-shape
   click area so neighbouring pieces never steal each other's clicks.
-- **New-piece popup:** at the start of a level that introduces shapes (3, 8, 13, 18, 23) a
+- **New-piece popup:** at the start of a level that introduces shapes (4, 7, 10, 13, 16) a
   "New piece!" popup shows the new shapes and their names; it pops in with an overshoot, stays
   about 2 seconds, then shrinks away. Input is blocked while it is up.
 
@@ -371,13 +372,128 @@ final content.
   written into every puzzle's `reward`). Day 1 also pays a **$10 first-day bonus**, so the player
   has **$40 after day 1** (3 easy trucks = $30, + $10). Bonuses are data (`bonuses` on a level in
   `levels.shapes.json`), so more can be added later without code changes.
-- **End-of-day popup:** headed by the employer - **Adequate Parcel Service**, tagline
-  *Arrives Intact, Mostly*, and the **Outbound Packing Department** in smaller type (all from
+- **End-of-day popup:** headed by the employer - **Cozy Cargo** (originally "Adequate Parcel
+  Service" with a tagline; renamed in Milestone 9.15, tagline dropped), and the **Outbound Packing Department** in smaller type (all from
   `src/data/company.json`) - then trucks completed, truck earnings, any bonuses (e.g. the
   first-day bonus), and the total earned that day.
 
 **DoD:** After day 1 the popup shows 3 trucks, $30 truck earnings, +$10 first-day bonus and $40
 total, and the coin counter reads $40; the shop shows no tabs.
+
+### Milestone 9.11 — 16:9 Screen (done)
+**Goal:** The game was laid out for a squarish 4:3 screen (1024 x 768); it now uses a
+widescreen 16:9 design size so it fills a normal monitor, ahead of the final art.
+
+**Deliverables:**
+- The design size is **1280 x 720** (was 1024 x 768). Piece/cell sizes are unchanged (72 px cells).
+- The apartment, shop and loading screen were re-laid out for the new shape; the puzzle screen
+  needed no change (its layout is centred, and the extra width gives the piece tray more room).
+
+**DoD:** Every screen fills the 16:9 canvas with nothing off-screen, including the tallest boards
+(7 rows) and the most crowded trays, and the apartment's drag placement still lands in the right cells.
+
+### Milestone 9.12 — Faster Shape Introduction (done)
+**Goal:** Introduce new piece shapes more quickly: the first irregular shapes later (level 5)
+but each following shape only 3 levels apart instead of 5.
+
+**Deliverables:**
+- Unlock schedule changed to: levels 1-4 simple shapes only; level 5 adds the L pieces (tri_l,
+  l4); then one new shape every 3 levels - t4 at 8, s4 at 11, p5 at 14, plus at 17. (Was: L pieces
+  at 3, then t4 / s4 / p5 / plus at 8 / 13 / 18 / 23.)
+- `levels.shapes.json` regenerated for the new schedule; the new-piece popup follows
+  automatically (it reads the level data), so it now shows at levels 5, 8, 11, 14 and 17.
+- Tests updated to the new levels.
+
+**DoD:** No puzzle uses a shape before its level; every puzzle at levels 5/8/11/14/17 contains
+that level's new shape; levels 1-4 use only the six simple shapes.
+
+### Milestone 9.13 — Square HUD Buttons (done)
+**Goal:** Make the Reset and Pause controls compact and read as icons.
+
+**Deliverables:**
+- Reset is a square with an "R"; Pause is a square with "II" (it shows a play symbol while paused).
+  The squares are as tall as the money panel and sit on the same row beside it, so the HUD reads
+  as one bar. The Hint button stays as a text button below the row.
+- The squares move with the money panel when the total grows wider.
+
+**DoD:** Reset and Pause sit level with the money panel and do what they did before; the row stays
+clear of the panel as the total grows.
+
+### Milestone 9.14 — First Art: Pieces, Conveyor, Buttons (done)
+**Goal:** Replace the placeholder rectangles with the first real art. (This is part of what Milestone
+10 lists as "sprite-based rendering"; the truck frame, character, speech bubbles, clipboard
+panel, backgrounds, shop and apartment art, and all audio are still to come.)
+
+**Deliverables:**
+- The art lives in the top-level `assets/` folder and is loaded by the Preloader (one Vite glob
+  import; each file's name is its texture key).
+- The 12 pieces are drawn with their art images (`assets/<shape id>.png`), also used in the
+  new-piece popup.
+- A conveyor belt along the bottom of the screen; the level's pieces sit in a single row on it,
+  centred, shrinking a little only if the row would not fit (most puzzles fit at full size, none
+  need less than 80%).
+- Reset, Pause and Hint are square icon buttons in one row beside the money panel (the Hint icon
+  fades after use, the Pause icon dims while paused).
+- The title screen uses the Start Packing button image; only the pill is clickable, not its glow.
+
+**DoD:** Every piece, the belt, the three icons and the Start Packing button show in the game, in
+the dev server and in a production build, and dragging between the belt and the board still works.
+
+### Milestone 9.15 — Truck, Shutter, Dark Belt, Button Feedback (done)
+**Goal:** Put the truck art around the board, make the parcels fit the new belt, close the truck
+when a puzzle is solved, and give buttons click feedback.
+
+**Deliverables:**
+- **Truck:** `truck-with-wheels.png` is a 9-slice frame stretched to fit each board's size (wheels,
+  bumper and lights stay a fixed size in the corners). The grid is drawn in the truck's grey with
+  slightly darker lines, so it looks baked into the frame.
+- **Belt:** the new, darker `conveyor-belt-dark.png`, shown at 58% of its file size so it and the
+  largest truck both fit the screen. Parcels are smaller on the belt (about 42 px per cell instead of
+  72) and may overlap slightly - later parcels in front - when a level has many; they grow to board
+  size when picked up. The row maths is in `src/core/TrayLayout.js` (tested).
+- **Shutter:** on a win, `truck-shutter.png` rolls down over the board and parcels (cropped to the
+  board's opening), rests briefly, then the usual overlay appears. Input is off meanwhile.
+- **Button feedback:** every button squashes when pressed and springs back (`pressFeedback.js`).
+  Buttons that change scene wait ~0.12 s so the squash can be seen.
+- Company renamed **Cozy Cargo**, no tagline.
+
+**DoD:** The truck fits every board from 2x4 to 5x5 and the 7-row boards, parcels never overlap
+more than slightly, the shutter fully covers the board before the overlay appears, and every
+button visibly reacts to a press.
+
+### Milestone 9.16 — Full-Width Belt, Faster Shutter, Straight to the Next Truck (done)
+**Goal:** Fill the lower band with the belt, make closing a truck snappy, and remove the
+stop between trucks of the same day.
+
+**Deliverables:**
+- **Belt:** fills the full 1280 px width, at most 230 design px tall (if the art is taller than that
+  it is squashed, so export it at about 2560x440). It is pushed 22 px below the screen edge so
+  the bottom rollers are clipped and it seems to run off-screen. Parcels are about 52 px per cell
+  and **never overlap** (overlap switched off again; a crowded row shrinks instead, down to the
+  tested minimum).
+- **Truck placement:** the truck always stands on the belt and grows upward; if a board is so tall
+  that the truck would touch the top of the screen, the cells shrink to fit.
+- **Shutter:** closes in 0.2 s (was 0.65 s) and the truck, board and parcels give a short
+  single small down-and-up bob (5 px, no sideways shake) as it lands.
+- **Flow:** after the shutter, the next truck of the day starts straight away. Only the day's last
+  truck shows the end-of-day pop-up. `WinScene` is removed.
+- Fixed: input stayed off after a truck was closed (the scene instance is reused).
+
+**DoD:** A day plays truck to truck with no pop-up in between, the end-of-day pop-up still appears
+after the last truck, input works on every truck, and no truck touches the top of the screen.
+
+### Milestone 9.17 — L Pieces at Level 4 (done)
+**Goal:** Bring the first irregular shapes one level earlier, keeping the 3-level interval.
+
+**Deliverables:**
+- Unlock schedule is now: levels 1-3 simple shapes only; level 4 adds the L pieces (tri_l, l4);
+  then t4 at 7, s4 at 10, p5 at 13, plus at 16.
+- `levels.shapes.json` regenerated (`SHAPE_UNLOCKS` in the generator); the new-piece popup follows
+  automatically and now shows at levels 4, 7, 10, 13 and 16. `levels.json` is unchanged.
+- Tests updated to the new levels.
+
+**DoD:** No puzzle uses a shape before its level; every puzzle at levels 4/7/10/13/16 contains that
+level's new shape; levels 1-3 use only the six simple shapes; all 800 puzzles solvable.
 
 ---
 

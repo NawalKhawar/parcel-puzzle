@@ -11,10 +11,19 @@ parcel-puzzle/
 │   └── level_data.md           Legacy solver-generated level examples (shape vocabulary
 │                                and difficulty ideas only — NOT the runtime level format).
 │
+├── assets/                     The game's art (PNG, drawn at 2x the design size): the 12 piece
+│                                images (named after their shape ids, e.g. plus.png), conveyor-
+│                                belt-dark.png, truck-with-wheels.png (the 9-sliced truck frame),
+│                                truck-shutter.png, start-packing.png, and the reset/pause/hint
+│                                icons.
+│                                Loaded by Preloader through a Vite glob import - each file's
+│                                name (minus .png) is its texture key - so no copying into
+│                                public/ is needed and the files are bundled on build.
+│
 ├── public/
 │   └── assets/                 Static assets served as-is (images, audio). Referenced via
 │                                Phaser Loader paths like 'assets/foo.png', copied verbatim
-│                                into dist/ on build.
+│                                into dist/ on build. (Currently only template leftovers.)
 │
 ├── src/
 │   ├── main.js                 App bootstrap: waits for DOMContentLoaded, starts the Phaser game.
@@ -36,9 +45,12 @@ parcel-puzzle/
 │   │   ├── RoomGrid.js         Apartment placement rules: furniture footprints on the floor
 │   │   │                       grid (bounds, no overlap - except onto rugs) and the
 │   │   │                       back-to-front draw order.
-│   │   └── RoomProjection.js   Apartment 2.5D maths: floor cell <-> screen pixel (exactly
-│   │                           invertible), the polygons of a box on the floor, and
-│   │                           point-in-polygon picking.
+│   │   ├── RoomProjection.js  Apartment 2.5D maths: floor cell <-> screen pixel (exactly
+│   │   │                       invertible), the polygons of a box on the floor, and
+│   │   │                       point-in-polygon picking.
+│   │   └── TrayLayout.js       Conveyor-belt maths: how big the parcels are and where each
+│   │                           goes in the single row - full size with gaps, then a slight
+│   │                           overlap when crowded, then shrinking as a last resort.
 │   │
 │   ├── data/                   Runtime level data — the NEW schema (replaces the legacy
 │   │   │                       docs/level_data.md format entirely). Shape geometry itself
@@ -50,8 +62,8 @@ parcel-puzzle/
 │   │   │                       generate-levels.js. NO LONGER PLAYED by the game - kept as
 │   │   │                       the reference set for the generator, validator and tests.
 │   │   ├── levels.shapes.json  Second puzzle set (800 puzzles: a pool of 5 per truck slot)
-│   │   │                       where shapes are introduced gradually (levels 1-2 simple only,
-│   │   │                       then tri_l+l4 at 3, t4 at 8, s4 at 13, p5 at 18, plus at 23).
+│   │   │                       where shapes are introduced gradually (levels 1-4 simple only,
+│   │   │                       then tri_l+l4 at 5, t4 at 8, s4 at 11, p5 at 14, plus at 17).
 │   │   │                       GENERATED (generate-levels.js --shape-gated). THIS is the file
 │   │   │                       the game plays (see pickDayPuzzles.js).
 │   │   ├── levels.schema.md    Human-readable description of the level object shape.
@@ -59,8 +71,8 @@ parcel-puzzle/
 │   │   │                       height, colour, flat for rugs).
 │   │   ├── shop.json           The shop's placeholder items (one flat list - the shop only
 │   │   │                       sells apartment items, so there are no tabs).
-│   │   ├── company.json        The employer shown on the end-of-day popup: name, tagline,
-│   │   │                       department.
+│   │   ├── company.json        The employer shown on the end-of-day popup: name (Cozy
+│   │   │                       Cargo) and department.
 │   │   ├── loadApartment.js    Validates apartment.json (loadApartment) and shop.json
 │   │   │                       (loadShop).
 │   │   ├── loadLevel.js        Loads + validates levels/trucks at runtime (loadTruck,
@@ -80,20 +92,21 @@ parcel-puzzle/
 │   │   │                       ever resizes the canvas's CSS size, never its pixel buffer).
 │   │   ├── scenes/
 │   │   │   ├── Boot.js         Minimal first scene; kicks off the Preloader.
-│   │   │   ├── Preloader.js    Loads shared assets, then starts TitleScene.
-│   │   │   ├── TitleScene.js   Title screen: the game's name + a single Play button that
-│   │   │   │                   starts level 1, truck 1. No other menu items.
+│   │   │   ├── Preloader.js    Loads the art from assets/, then starts TitleScene.
+│   │   │   ├── TitleScene.js   Title screen: the game's name + the Start Packing
+│   │   │   │                   button image, which starts level 1, truck 1. No other items.
 │   │   │   ├── PuzzleScene.js  The core gameplay scene: plays one truck (puzzle) of one
 │   │   │   │                   level (day) — started with { levelIndex, truckIndex }; the
 │   │   │   │                   day's puzzles rotate through the pools (picked at truck 1) and are kept
 │   │   │   │                   in the registry.
-│   │   │   │                   Renders the grid + piece tray, owns drag/snap, win
-│   │   │   │                   detection, the Reset/Pause/Hint + coin HUD, dragging placed pieces off the board, the "Level N ·
+│   │   │   │                   Renders the 9-sliced truck frame sized to the board,
+│   │   │   │                   the conveyor belt with the parcels in one row on it,
+│   │   │   │                   the shutter that closes the truck on a win, owns drag/snap, win
+│   │   │   │                   detection, the coin HUD with the Reset/Pause/Hint icon
+│   │   │   │                   buttons, dragging placed pieces off the board, the "Level N ·
 │   │   │   │                   Truck k/total" header, and the day's running totals (kept
 │   │   │   │                   in the Phaser registry, since a fresh PuzzleScene instance
 │   │   │   │                   is created per truck).
-│   │   │   ├── WinScene.js     Between-trucks overlay (not shown after a day's last truck):
-│   │   │   │                   "Truck k/total", reward earned, today's total, Next Truck.
 │   │   │   ├── DayCompleteScene.js  End-of-day popup after a level's last truck: trucks
 │   │   │   │                   completed, truck earnings, bonuses and the total earned, under the company header
 │   │   │   │                   (company.json), and Shop / Decorate / Next Day
@@ -106,10 +119,11 @@ parcel-puzzle/
 │   │   │   │                   again, or drag it back to the inventory. Layout is kept in
 │   │   │   │                   the registry ('apartmentLayout').
 │   │   │   └── GameOver.js     Existing template scene — repurpose or remove once
-│   │   │                       WinScene fully covers its role.
+│   │   │                       it is not used.
 │   │   └── objects/
-│   │       ├── GridView.js     Draws a Grid (core/Grid.js) as cells on screen; open vs.
-│   │       │                   blocked cell styling; also owns ghost/snap-preview
+│   │       ├── GridView.js     Draws a Grid (core/Grid.js) as cells on screen: open
+│   │       │                   cells are the truck's grey with darker grid lines, so the grid
+│   │       │                   looks baked into the truck; blocked cell styling; also owns ghost/snap-preview
 │   │       │                   rendering for a piece being dragged and the pulsing
 │   │       │                   hint highlight (showHint/clearHint).
 │   │       ├── FurnitureView.js  Draws one piece of furniture as a placeholder 3D box
@@ -117,7 +131,10 @@ parcel-puzzle/
 │   │       ├── NewPieceIntro.js  The "New piece!" popup at the start of a level that
 │   │       │                   introduces shapes: pops in with overshoot, holds ~2 s, shrinks
 │   │       │                   away, blocking input meanwhile.
-│   │       └── PieceView.js    Draws a single piece as its true polyomino shape; owns
+│   │       ├── pressFeedback.js  Click feedback for any button: squashes when pressed,
+│   │       │                   springs back on release; optional short delay so scene-
+│   │       │                   changing buttons show it before they act.
+│   │       └── PieceView.js    Draws a single piece using its art image (assets/<shape id>.png); owns
 │   │                           pointer input and drag state (not placement legality). Placed
 │   │                           pieces stay draggable, with an exact-shape hit area.
 │   │

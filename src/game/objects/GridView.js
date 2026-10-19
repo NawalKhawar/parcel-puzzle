@@ -20,11 +20,13 @@ import { UI_SCALE } from '../uiScale.js';
  * highlight of the cells on the BOARD itself instead, via showGhost().
  */
 
-/** Colors are placeholder-only; Milestone 10 replaces these with real art. */
-const OPEN_CELL_FILL_COLOR = 0xfbf3e4;
-const OPEN_CELL_STROKE_COLOR = 0xcfc3a8;
+/** The board is drawn straight onto the truck's grey interior (assets/truck-with-wheels.png), so
+ *  open cells are exactly that grey with slightly darker grid lines - it looks as if the grid
+ *  is part of the truck. 0x777975 is the grey sampled from the artwork. */
+const OPEN_CELL_FILL_COLOR = 0x777975;
+const OPEN_CELL_STROKE_COLOR = 0x676964;
 const BLOCKED_CELL_FILL_COLOR = 0x3a362f;
-const CELL_PADDING = 2 * UI_SCALE; // px gap between adjacent cell squares, purely cosmetic.
+const CELL_PADDING = 0; // cells share their edges, so the strokes form single grid lines.
 
 /** Ghost highlight colors shown on the board cells a dragged piece would occupy. */
 const GHOST_VALID_COLOR = 0x8fd19e;
@@ -102,7 +104,7 @@ export class GridView
 
                 if (!isBlocked)
                 {
-                    rect.setStrokeStyle(UI_SCALE, OPEN_CELL_STROKE_COLOR);
+                    rect.setStrokeStyle(1.5 * UI_SCALE, OPEN_CELL_STROKE_COLOR);
                 }
 
                 this.container.add(rect);

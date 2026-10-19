@@ -1,5 +1,4 @@
-import { getShapeBounds, getShapeCells, getShapeName } from '../../core/Shape.js';
-import { getShapeColor } from './PieceView.js';
+import { getShapeBounds, getShapeName } from '../../core/Shape.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -10,9 +9,9 @@ import { UI_SCALE } from '../uiScale.js';
  * and disappears, returning to gameplay. While it is up, a full-screen blocker swallows all
  * pointer input, so the puzzle can't be touched underneath; the player never has to dismiss it.
  *
- * The popup shows each new shape drawn in its own colour (the same colour as the matching
- * piece in the tray) with its name underneath. It draws plain rectangles and holds no puzzle
- * logic; PuzzleScene decides when to show it.
+ * The popup shows each new shape using its art image (the same image as the matching piece in
+ * the tray) with its name underneath. It holds no puzzle logic; PuzzleScene decides when to
+ * show it.
  */
 
 /** Timings in milliseconds. */
@@ -75,21 +74,12 @@ export function showNewPieceIntro(scene, shapeIds, onDone)
     const shapesTop = -panelHeight / 2 + 88 * S;
     for (const shape of shapes)
     {
-        const color = getShapeColor(shape.id);
-        for (const part of getShapeCells(shape.id))
-        {
-            container.add(
-                scene.add
-                    .rectangle(
-                        cursorX + part.col * cell + cell / 2,
-                        shapesTop + part.row * cell + cell / 2,
-                        cell - 3 * S,
-                        cell - 3 * S,
-                        color
-                    )
-                    .setStrokeStyle(S, 0x3a362f, 0.35)
-            );
-        }
+        container.add(
+            scene.add
+                .image(cursorX, shapesTop, shape.id)
+                .setOrigin(0, 0)
+                .setDisplaySize(shape.bounds.cols * cell, shape.bounds.rows * cell)
+        );
         container.add(
             scene.add
                 .text(cursorX + (shape.bounds.cols * cell) / 2, shapesTop + tallest + 26 * S, getShapeName(shape.id), {

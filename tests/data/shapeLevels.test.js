@@ -3,9 +3,9 @@
  *
  * Tests for the shape-gated puzzle pool (src/data/levels.shapes.json), a second data set with
  * the same level structure as levels.json but where piece shapes are introduced gradually:
- *   - levels 1-2 use only the simple shapes (dot, domino_h, domino_v, tri_i, square, bar4);
- *   - level 3 adds tri_l and l4;
- *   - levels 8, 13, 18 and 23 each add one more shape (t4, s4, p5, plus);
+ *   - levels 1-3 use only the simple shapes (dot, domino_h, domino_v, tri_i, square, bar4);
+ *   - level 4 adds tri_l and l4;
+ *   - levels 7, 10, 13 and 16 each add one more shape (t4, s4, p5, plus), three levels apart;
  *   - the number of trucks per day and the easy/medium/hard mix match levels.json;
  *   - each truck slot holds a pool of 5 puzzles, and every one is solvable.
  * Also covers the loadShapeLevels validator with small hand-built data.
@@ -83,11 +83,11 @@ describe('shipped levels.shapes.json - shape progression', () => {
     // Which shapes each level is expected to allow, following the unlock plan.
     const expectedAllowed = (levelNumber) => {
         const unlocks = [
-            [3, ['tri_l', 'l4']],
-            [8, ['t4']],
-            [13, ['s4']],
-            [18, ['p5']],
-            [23, ['plus']],
+            [4, ['tri_l', 'l4']],
+            [7, ['t4']],
+            [10, ['s4']],
+            [13, ['p5']],
+            [16, ['plus']],
         ];
         return [...SIMPLE, ...unlocks.filter(([from]) => from <= levelNumber).flatMap(([, shapes]) => shapes)];
     };
@@ -96,8 +96,8 @@ describe('shipped levels.shapes.json - shape progression', () => {
         assert.equal(levels.length, 30);
     });
 
-    test('levels 1 and 2 only allow (and only use) the simple shapes', () => {
-        for (const level of levels.slice(0, 2)) {
+    test('levels 1 to 3 only allow (and only use) the simple shapes', () => {
+        for (const level of levels.slice(0, 3)) {
             assert.deepEqual(level.allowedShapes, SIMPLE, `${level.id} allowed shapes`);
             assert.deepEqual(level.newShapes, [], `${level.id} introduces nothing`);
             for (const puzzle of level.trucks.flatMap((slot) => slot.puzzles)) {
@@ -106,14 +106,14 @@ describe('shipped levels.shapes.json - shape progression', () => {
         }
     });
 
-    test('shapes are introduced at levels 3 (tri_l + l4), 8 (t4), 13 (s4), 18 (p5) and 23 (plus)', () => {
+    test('shapes are introduced at levels 4 (tri_l + l4), 7 (t4), 10 (s4), 13 (p5) and 16 (plus) - every 3 levels after the first', () => {
         const introductions = levels.map((level, index) => [index + 1, level.newShapes]).filter(([, shapes]) => shapes.length > 0);
         assert.deepEqual(introductions, [
-            [3, ['tri_l', 'l4']],
-            [8, ['t4']],
-            [13, ['s4']],
-            [18, ['p5']],
-            [23, ['plus']],
+            [4, ['tri_l', 'l4']],
+            [7, ['t4']],
+            [10, ['s4']],
+            [13, ['p5']],
+            [16, ['plus']],
         ]);
     });
 
@@ -124,7 +124,7 @@ describe('shipped levels.shapes.json - shape progression', () => {
     });
 
     test('no puzzle uses a shape before the level that introduces it', () => {
-        const introducedAt = { tri_l: 3, l4: 3, t4: 8, s4: 13, p5: 18, plus: 23 };
+        const introducedAt = { tri_l: 4, l4: 4, t4: 7, s4: 10, p5: 13, plus: 16 };
         levels.forEach((level, index) => {
             for (const puzzle of level.trucks.flatMap((slot) => slot.puzzles)) {
                 for (const id of puzzle.pieces) {
@@ -134,7 +134,7 @@ describe('shipped levels.shapes.json - shape progression', () => {
         });
     });
 
-    test('at a level that introduces shapes, every puzzle contains at least one of them (and level 3 shows both)', () => {
+    test('at a level that introduces shapes, every puzzle contains at least one of them (and level 4 shows both)', () => {
         for (const level of levels.filter((entry) => entry.newShapes.length > 0)) {
             const puzzles = level.trucks.flatMap((slot) => slot.puzzles);
             for (const puzzle of puzzles) {

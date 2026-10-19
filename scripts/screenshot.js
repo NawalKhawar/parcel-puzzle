@@ -102,7 +102,7 @@ async function main() {
         await waitForServer(URL);
 
         browser = await chromium.launch();
-        const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
+        const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 
         page.on('console', (msg) => {
             if (msg.type() === 'error')
@@ -127,9 +127,9 @@ async function main() {
 
         // Click the Play button. Phaser draws to a canvas, so there's no DOM button to
         // target: instead click where TitleScene places it - horizontally centered, and
-        // 70/768 of the canvas height below its vertical center.
+        // 70/720 of the canvas height below its vertical center.
         const box = await page.locator('canvas').boundingBox();
-        await page.mouse.click(box.x + box.width / 2, box.y + box.height * (0.5 + 70 / 768));
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height * (0.5 + 70 / 720));
         await page.waitForTimeout(500);
 
         await page.screenshot({ path: outPath });

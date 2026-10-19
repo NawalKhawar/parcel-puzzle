@@ -28,8 +28,8 @@
  * `npm test` to double-check.
  *
  * SHAPE-GATED MODE. A second data set with the same level structure (same trucks per day,
- * same easy/medium/hard mix) but where the piece shapes are introduced gradually: levels 1-2
- * use only the simple shapes, level 3 adds tri_l and l4, and levels 8, 13, 18 and 23 add one
+ * same easy/medium/hard mix) but where the piece shapes are introduced gradually: levels 1-3
+ * use only the simple shapes, level 4 adds tri_l and l4, and levels 7, 10, 13 and 16 add one
  * more shape each (see SHAPE_UNLOCKS). Every truck slot gets a POOL of several different
  * puzzles to choose from. The normal levels.json is not touched by this mode.
  *
@@ -267,7 +267,7 @@ function weightsFor(t, rules = null) {
  * Every board size the generator may use, as [rows, cols]. Boards are always square or
  * portrait (rows >= cols), never landscape, because the board will eventually represent
  * the open back of a mail truck. At most 7 rows x 5 cols; PuzzleScene shrinks the cell
- * size on tall boards so board + piece tray still fit on the 1024x768 screen.
+ * size on tall boards so board + piece tray still fit on the 1280x720 screen.
  */
 const BOARD_SIZES = [
     [4, 2], [5, 2], [6, 2], [7, 2],
@@ -669,15 +669,15 @@ const SIMPLE_SHAPES = ['dot', 'domino_h', 'domino_v', 'tri_i', 'square', 'bar4']
 
 /**
  * When each irregular shape is introduced. A shape unlocked at level N may be used from
- * level N onwards. Levels 1-2 therefore use only SIMPLE_SHAPES. This is THE shape-progression
+ * level N onwards. Levels 1-3 therefore use only SIMPLE_SHAPES. This is THE shape-progression
  * plan - edit it and re-run with --shape-gated to change when shapes arrive.
  */
 const SHAPE_UNLOCKS = [
-    { level: 3, shapes: ['tri_l', 'l4'] },
-    { level: 8, shapes: ['t4'] },
-    { level: 13, shapes: ['s4'] },
-    { level: 18, shapes: ['p5'] },
-    { level: 23, shapes: ['plus'] },
+    { level: 4, shapes: ['tri_l', 'l4'] },
+    { level: 7, shapes: ['t4'] },
+    { level: 10, shapes: ['s4'] },
+    { level: 13, shapes: ['p5'] },
+    { level: 16, shapes: ['plus'] },
 ];
 
 /** How much more likely a newly introduced shape is than usual, so the level that introduces it shows it off. */

@@ -7,9 +7,9 @@ import { UI_SCALE } from '../uiScale.js';
  * PieceView.js
  *
  * A Phaser Container that renders a single polyomino piece as its true fixed-orientation
- * shape (one square per cell in src/core/Shape.js's definition for that shape id), using
- * placeholder flat colors — Milestone 10 swaps these for real art once the core loop is
- * validated. Positioned so (x, y) is the world-space top-left corner of the piece's own
+ * shape, using the piece's art image (assets/<shape id>.png, loaded by the Preloader under the
+ * shape id as its texture key). Each image is drawn at 144 px per cell - twice the 72 px
+ * game cell, for sharpness - and is scaled to the piece's bounding box. Positioned so (x, y) is the world-space top-left corner of the piece's own
  * bounding box, matching the same "origin = bounding-box corner" convention Shape.js and
  * Placement.js use, so the pixel layout here stays consistent with the grid-coordinate
  * math everywhere else in the engine.
@@ -23,7 +23,7 @@ import { UI_SCALE } from '../uiScale.js';
  * engine/rendering split used everywhere else (see "Architectural boundary" in
  * PROJECT_STRUCTURE.md): this class still holds no puzzle-rule logic of its own.
  *
- * A piece's own color is always fixed — valid/invalid drop feedback while dragging is
+ * A piece's own art is always fixed — valid/invalid drop feedback while dragging is
  * shown as a ghost highlight on the board itself (see GridView.showGhost), not by
  * recoloring the piece, so the player always has a stable, unambiguous answer to
  * "what piece am I holding" while dragging.
@@ -32,46 +32,12 @@ import { UI_SCALE } from '../uiScale.js';
  * a bit larger than the piece's visible bounds, so a slightly-off click still grabs it.
  */
 
-/**
- * Placeholder per-shape colors, purely so different shapes are visually distinguishable
- * in the tray before real art exists. Not meaningful game state.
- */
-const SHAPE_COLORS = {
-    dot: 0xe08283,
-    domino_h: 0xf0b86e,
-    domino_v: 0xf0b86e,
-    tri_i: 0xf5d76e,
-    tri_l: 0xa4c77a,
-    square: 0x7fb3d5,
-    bar4: 0xf0b86e,
-    l4: 0xa4c77a,
-    t4: 0xb48ead,
-    s4: 0x9fd6c5,
-    p5: 0x7fb3d5,
-    plus: 0xd98fa3,
-};
-const DEFAULT_COLOR = 0xbfbfbf;
-
-/**
- * The colour a shape is drawn in (shared with other UI that shows a shape, such as the
- * "new piece" popup, so it matches the piece the player will see in the tray).
- *
- * @param {string} shapeId
- * @returns {number} 0xrrggbb
- */
-export function getShapeColor(shapeId)
-{
-    return SHAPE_COLORS[shapeId] ?? DEFAULT_COLOR;
-}
-const CELL_PADDING = 3 * UI_SCALE; // px gap between adjacent cell squares, purely cosmetic.
-
-/** How far beyond the piece's visible bounds its clickable/draggable hit area extends
- *  on every side, so the player doesn't have to click pixel-perfectly on the shape.
- *  Kept comfortably under half of PuzzleScene's TRAY_PIECE_GAP so two adjacent tray
- *  pieces' padded hit areas never overlap each other. Scaled by UI_SCALE along with
- *  everything else (see uiScale.js) so this stays the same *visual* click forgiveness
- *  on screen regardless of how many real pixels back each piece. */
-const HIT_AREA_PADDING = 10 * UI_SCALE;
+/** How far beyond each of a piece's cells its clickable/draggable hit area extends while the
+ *  piece is in the tray, so the player doesn't have to click pixel-perfectly on the shape. (On
+ *  the board there is no padding: pieces sit edge to edge.) Scaled by UI_SCALE along with
+ *  everything else (see uiScale.js) so this stays the same *visual* click forgiveness on
+ *  screen regardless of how many real pixels back each piece. */
+const HIT_AREA_PADDING = 6 * UI_SCALE;
 
 export class PieceView
 {
@@ -94,7 +60,6 @@ export class PieceView
         this.shapeId = shapeId;
         this.cellSize = cellSize;
         this.placementId = placementId;
-        this.baseColor = SHAPE_COLORS[shapeId] ?? DEFAULT_COLOR;
 
         /** True while this piece sits on the board. A placed piece can still be picked up again (dragged to a new spot, or off the board back to the tray). */
         this.isPlaced = false;
@@ -111,9 +76,6 @@ export class PieceView
          *  drop turns out to be invalid and the piece returns to the tray. */
         this.trayScale = 1;
 
-        /** @type {Phaser.GameObjects.Rectangle[]} the per-cell rectangles drawn in draw(), kept around in case a future milestone needs to re-skin a piece in place. */
-        this.rects = [];
-
         this.container = scene.add.container(x, y);
 
         this.draw();
@@ -121,34 +83,23 @@ export class PieceView
     }
 
     /**
-     * Draws one rectangle per cell of the shape, at the cell's relative offset scaled
-     * by cellSize. Called once from the constructor; exposed as its own method in case
-     * a future milestone needs to re-skin a piece in place.
+     * Draws the piece: its art image, stretched to the piece's bounding box (the image is
+     * drawn at twice the on-screen size, so it is scaled down by the same factor in both
+     * directions and keeps its proportions). Called once from the constructor.
      */
     draw ()
     {
         this.container.removeAll(true);
-        this.rects = [];
 
-        const size = this.cellSize - CELL_PADDING;
-
-        for (const cell of getShapeCells(this.shapeId))
-        {
-            const localX = cell.col * this.cellSize + this.cellSize / 2;
-            const localY = cell.row * this.cellSize + this.cellSize / 2;
-
-            const rect = this.scene.add.rectangle(localX, localY, size, size, this.baseColor);
-            rect.setStrokeStyle(UI_SCALE, 0x3a362f, 0.35);
-
-            this.container.add(rect);
-            this.rects.push(rect);
-        }
+        const image = this.scene.add.image(0, 0, this.shapeId).setOrigin(0, 0);
+        image.setDisplaySize(this.pixelWidth, this.pixelHeight);
+        this.container.add(image);
     }
 
     /**
      * Makes this piece's container hit-testable (a Container has no intrinsic texture
      * to infer a hit area from, so one is built explicitly matching the piece's own
-     * bounding box, padded outward by HIT_AREA_PADDING so a slightly-off click still
+     * cells, padded outward by HIT_AREA_PADDING in the tray so a slightly-off click still
      * grabs it) and tells Phaser's input plugin it may be dragged. PuzzleScene attaches
      * the actual 'dragstart'/'drag'/'dragend' listeners at the scene level (one set of
      * listeners for every piece, rather than one per piece) and identifies which
@@ -182,37 +133,29 @@ export class PieceView
         const cells = getShapeCells(this.shapeId);
         const cellSize = this.cellSize;
 
-        // The hit area is set up once, and its test looks at isPlaced EVERY time it runs, so
-        // moving a piece between the tray and the board never needs the hit area replaced
-        // (Phaser only keeps the first one it is given, and swapping it in the middle of a
-        // drag would be fragile). The two situations want different hit areas:
-        //   - IN THE TRAY: a forgiving bounding box, padded outward by HIT_AREA_PADDING.
-        //   - ON THE BOARD: pieces sit edge to edge, and a bounding box (let alone a padded
-        //     one) would overlap its neighbours - an L-shaped piece's box even covers the
-        //     notch another piece sits in. So a point only hits if it is inside one of this
-        //     piece's own cells.
-        // x and y arrive already shifted by the display origin (see the long note above), so
-        // the board test takes that shift off again before comparing against the cells.
+        // The hit area is set up once (Phaser only keeps the first one it is given, and swapping
+        // it in the middle of a drag would be fragile). Its test is the piece's own cells: an
+        // L-shaped piece's empty corner does not respond, so a neighbour sitting there can be
+        // grabbed instead. In the tray each cell is grown outward by HIT_AREA_PADDING so a
+        // slightly-off click still grabs it; on the board there is no padding, because pieces
+        // sit edge to edge. isPlaced is looked at EVERY time the test runs, so moving a piece
+        // between the tray and the board needs no new hit area. Parcels on the belt may overlap
+        // slightly; where they do, the one drawn in front gets the click.
+        // The rectangle is only the shape Phaser insists on; the callback does the real test. x
+        // and y arrive already shifted by the display origin (see the long note above), so the
+        // test takes that shift off again before comparing against the cells.
         this.container.setInteractive(
-            new Geom.Rectangle(
-                displayOriginX - HIT_AREA_PADDING,
-                displayOriginY - HIT_AREA_PADDING,
-                this.pixelWidth + HIT_AREA_PADDING * 2,
-                this.pixelHeight + HIT_AREA_PADDING * 2
-            ),
+            new Geom.Rectangle(0, 0, this.pixelWidth + displayOriginX * 2, this.pixelHeight + displayOriginY * 2),
             (area, x, y) => {
-                if (!this.isPlaced)
-                {
-                    return Geom.Rectangle.Contains(area, x, y);
-                }
+                const pad = this.isPlaced ? 0 : HIT_AREA_PADDING;
                 const localX = x - displayOriginX;
                 const localY = y - displayOriginY;
                 return cells.some(
                     (cell) =>
-                        localX >= cell.col * cellSize &&
-                        localX < (cell.col + 1) * cellSize &&
-                        localY >= cell.row * cellSize &&
-                        localY < (cell.row + 1) * cellSize
+                        localX >= cell.col * cellSize - pad &&
+                        localX < (cell.col + 1) * cellSize + pad &&
+                        localY >= cell.row * cellSize - pad &&
+                        localY < (cell.row + 1) * cellSize + pad
                 );
             }
         );

@@ -2,6 +2,7 @@ import { Scene } from 'phaser';
 
 import { loadShop } from '../../data/loadApartment.js';
 import shopRaw from '../../data/shop.json';
+import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -18,7 +19,7 @@ import { UI_SCALE } from '../uiScale.js';
 
 const S = UI_SCALE;
 
-const PANEL = { x: 120 * S, y: 100 * S, width: 784 * S, height: 440 * S };
+const PANEL = { y: 100 * S, width: 784 * S, height: 440 * S };
 const ITEM_BOX = { size: 160 * S, gap: 24 * S, columns: 4 };
 
 export class ShopScene extends Scene
@@ -44,6 +45,9 @@ export class ShopScene extends Scene
 
         const shop = loadShop(shopRaw);
 
+        // Centre the panel horizontally (the design width is 1280, wider than the panel).
+        this.panelX = (this.scale.width - PANEL.width) / 2;
+
         const backButton = this.add
             .text(24 * S, 24 * S, '< Back', {
                 fontFamily: 'Arial Black',
@@ -53,9 +57,9 @@ export class ShopScene extends Scene
                 padding: { x: 16 * S, y: 8 * S },
             })
             .setInteractive({ useHandCursor: true });
-        backButton.on('pointerdown', () => {
+        makePressable(this, backButton, () => {
             this.scene.start('DayCompleteScene', this.dayCompleteData);
-        });
+        }, { delay: 120 });
 
         this.add
             .text(this.scale.width / 2, 40 * S, 'Shop', {
@@ -78,9 +82,9 @@ export class ShopScene extends Scene
         // The panel the item boxes sit in.
         const panel = this.add.graphics();
         panel.fillStyle(0xfaf3e4, 1);
-        panel.fillRoundedRect(PANEL.x, PANEL.y, PANEL.width, PANEL.height, 14 * S);
+        panel.fillRoundedRect(this.panelX, PANEL.y, PANEL.width, PANEL.height, 14 * S);
         panel.lineStyle(2 * S, 0x3a362f, 1);
-        panel.strokeRoundedRect(PANEL.x, PANEL.y, PANEL.width, PANEL.height, 14 * S);
+        panel.strokeRoundedRect(this.panelX, PANEL.y, PANEL.width, PANEL.height, 14 * S);
 
         this.createItemGrid(shop.items);
     }
@@ -94,7 +98,7 @@ export class ShopScene extends Scene
     createItemGrid (items)
     {
         const gridWidth = ITEM_BOX.columns * ITEM_BOX.size + (ITEM_BOX.columns - 1) * ITEM_BOX.gap;
-        const startX = PANEL.x + (PANEL.width - gridWidth) / 2;
+        const startX = this.panelX + (PANEL.width - gridWidth) / 2;
         const startY = PANEL.y + 28 * S;
 
         items.forEach((item, i) => {

@@ -5,6 +5,7 @@ import { createRoomProjection, getBoxFaces, pointInBox } from '../../core/RoomPr
 import { loadApartment } from '../../data/loadApartment.js';
 import apartmentRaw from '../../data/apartment.json';
 import { FurnitureView, drawBox, parseColor } from '../objects/FurnitureView.js';
+import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -31,28 +32,28 @@ import { UI_SCALE } from '../uiScale.js';
  * cleared when a new game starts from the title screen.
  */
 
-// All pixel constants are in the 1024x768 design space, multiplied by UI_SCALE like the rest
+// All pixel constants are in the 1280x720 design space, multiplied by UI_SCALE like the rest
 // of src/game/ (see uiScale.js).
 const S = UI_SCALE;
 
 /** Where the room sits on screen: the floor trapezoid (narrow at the back wall, wide at the front). */
 const ROOM_VIEW = {
-    centerX: 404 * S,
-    backY: 262 * S,
-    frontY: 690 * S,
-    backWidth: 440 * S,
-    frontWidth: 720 * S,
+    centerX: 528 * S,
+    backY: 240 * S,
+    frontY: 660 * S,
+    backWidth: 480 * S,
+    frontWidth: 800 * S,
 };
 
 /** The back wall is a flat rectangle from this y down to the floor's back edge; the side walls
  *  angle out to the (slightly higher) front corners. */
-const WALL_TOP_Y = 96 * S;
-const WALL_FRONT_TOP_Y = 80 * S;
+const WALL_TOP_Y = 88 * S;
+const WALL_FRONT_TOP_Y = 72 * S;
 /** Thickness of the floor slab drawn under the front edge, purely cosmetic. */
 const FLOOR_SLAB_HEIGHT = 16 * S;
 
 /** The inventory panel on the right. */
-const PANEL = { x: 808 * S, y: 80 * S, width: 208 * S, height: 660 * S };
+const PANEL = { x: 1056 * S, y: 80 * S, width: 208 * S, height: 600 * S };
 const SLOT = { size: 88 * S, gap: 8 * S, padding: 12 * S, firstY: 124 * S, columns: 2 };
 
 /** Colours of the ghost drawn on the floor while dragging. */
@@ -167,7 +168,7 @@ export class ApartmentScene extends Scene
         const windowWidth = 130 * S;
         const windowHeight = 84 * S;
         const windowX = ROOM_VIEW.centerX - windowWidth / 2;
-        const windowY = 124 * S;
+        const windowY = 112 * S;
         g.fillStyle(0xbfe3f5, 1);
         g.fillRect(windowX, windowY, windowWidth, windowHeight);
         g.lineStyle(4 * S, 0xfaf3e4, 1);
@@ -207,9 +208,9 @@ export class ApartmentScene extends Scene
             })
             .setInteractive({ useHandCursor: true });
         // Back returns to the end-of-day popup it came from, rebuilt from the same data.
-        backButton.on('pointerdown', () => {
+        makePressable(this, backButton, () => {
             this.scene.start('DayCompleteScene', this.dayCompleteData);
-        });
+        }, { delay: 120 });
 
         this.add.text(150 * S, 24 * S, 'Apartment', {
             fontFamily: 'Arial Black',

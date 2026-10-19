@@ -3,7 +3,7 @@
  *
  * Tests for the game's money: what each truck pays by difficulty (easy $10, medium $15,
  * hard $35), the one-off first-day bonus ($10, so $40 after day 1), the validation of level
- * bonuses, and the employer details shown on the end-of-day popup.
+ * bonuses, and the employer details (Cozy Cargo) shown on the end-of-day popup.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -86,9 +86,9 @@ describe('end-of-level bonuses', () => {
 });
 
 describe('employer details on the end-of-day popup', () => {
-    test('the company name, tagline and department are set', () => {
-        assert.equal(companyData.name, 'Adequate Parcel Service');
-        assert.equal(companyData.tagline, 'Arrives Intact, Mostly');
+    test('the company is Cozy Cargo, with a department and no tagline', () => {
+        assert.equal(companyData.name, 'Cozy Cargo');
+        assert.equal(companyData.tagline, undefined, 'the tagline was dropped');
         assert.ok(typeof companyData.department === 'string' && companyData.department.length > 0, 'a department name is needed');
     });
 });

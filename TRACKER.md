@@ -101,7 +101,7 @@ Log.
   - [x] Workday/shift-complete screen (`ShiftCompleteScene.js`)
   - [x] Multi-level sequential flow (all of `levels.json` = one shift)
 
-- [x] **Milestones 9.1-9.10 — Post-M9 additions** (done 2026-10-15/20; added to ROADMAP.md)
+- [x] **Milestones 9.1-9.17 — Post-M9 additions** (done 2026-10-15/20; added to ROADMAP.md)
   - [x] 9.1 Title screen, day flow & persistent pay count
   - [x] 9.2 30 generated levels (3 / 4 / 5 / 6 trucks per day)
   - [x] 9.3 Portrait / square boards
@@ -112,6 +112,13 @@ Log.
   - [x] 9.8 Shape progression in gameplay (the game plays the pool)
   - [x] 9.9 Rotating puzzles, free piece movement (no Undo), new-piece popup
   - [x] 9.10 Simpler shop (no tabs/clothing), new economy, end-of-day report
+  - [x] 9.11 16:9 screen (1280x720)
+  - [x] 9.12 Faster shape introduction (L pieces at level 5, then every 3 levels)
+  - [x] 9.13 Square HUD buttons (R and II beside the money panel)
+  - [x] 9.14 First art: pieces, conveyor belt, icon buttons, Start Packing button
+  - [x] 9.15 Truck frame + shutter, dark belt with smaller overlapping parcels, button feedback, Cozy Cargo
+  - [x] 9.16 Full-width belt, faster shutter + truck bob, straight to the next truck (WinScene removed)
+  - [x] 9.17 L pieces at level 4, then every 3 levels (7, 10, 13, 16)
 
 - [ ] **Milestone 10 — Visual Polish & Audio**
   - [ ] Sprite-based rendering
@@ -707,3 +714,156 @@ Log.
     returned to the same popup; level 30 shows the "every level" note with Finish; no console
     errors. Puzzle content in both data files is unchanged (checked: identical apart from
     reward/bonuses). 292 tests pass (new: economy and bonus tests, shop tests rewritten).
+
+- 2026-10-20 — **Switched to a 16:9 design size: 1280 x 720** (was 4:3, 1024 x 768; Milestone 9.11).
+  Done before the final art so graphics can be made to the right shape.
+  - **Config:** `main.js` width/height are 1280 and 720 (times UI_SCALE, as before; `Scale.FIT`
+    still letterboxes on other window shapes - on a 16:9 window there are no bars). Piece and
+    cell sizes did not change: 72 px cells, boards capped at 360 px tall, tray margins as before.
+  - **Puzzle screen needed no layout change.** I re-ran the tray-fit rule (the same algorithm as
+    PuzzleScene.layoutTray) over all 800 puzzles at the new size: none overflow, and the smallest
+    tray scale actually improved from 0.60 to 0.75, because the wider screen fits more pieces
+    per tray row. (Tested alternatives with a shorter board cap; not needed.)
+  - **Re-laid out:** the **apartment** (room centred in the space left of the inventory, 480/800 px
+    back/front width, floor from y 240 to 660, wall top 88; inventory panel moved to x 1056 and
+    shortened to 600 px so it ends on screen); the **shop** (panel centred from the screen width
+    instead of a fixed x); the **loading screen** (bar sizes for the new shape; the template's
+    1024x768 background is scaled to cover the canvas); the unused template scenes (centred from
+    the screen size). `scripts/screenshot.js` now uses a 1280x720 viewport.
+  - **Verified in the browser** at a 1280x720 window (canvas 1280x720), 1920x1080 (same canvas,
+    scaled to 16:9, no bars) and 1024x768 (letterboxed to 1024x576): title, puzzle, the tallest
+    7-row board, a crowded hard board, the new-piece popup, the day-complete popup, the shop and
+    the apartment all fit; five real drags in the apartment landed in the intended cells; the
+    inventory stays on screen; no console errors.
+
+- 2026-10-20 — **Shape unlock schedule changed** (Milestone 9.12; supersedes the schedule in the
+  9.7 entries). New plan (`SHAPE_UNLOCKS` in scripts/generate-levels.js): levels 1-4 simple shapes
+  only; **level 5** adds tri_l + l4; then one shape every 3 levels - **t4 at 8, s4 at 11, p5 at 14,
+  plus at 17**. Before: simple only for levels 1-2, L pieces at 3, then t4/s4/p5/plus at 8/13/18/23.
+  The order of the four later shapes is unchanged (t4, s4, p5, plus). Consequences: levels 3-4
+  went back to simple shapes only, and from level 17 on every shape is available (13 levels of
+  full variety, versus 8 before). I read "after 3-level intervals" as 3 levels between
+  introductions (5 -> 8 -> 11 -> 14 -> 17). `levels.shapes.json` was regenerated (same
+  structure and economy; the puzzles are new wherever the allowed shapes changed); no code
+  changed besides the table, since the new-piece popup, loader and picker read it from the data.
+  Tests updated.
+  Verified: the data's first appearance of each shape is tri_l/l4 at 5, t4 at 8, s4 at 11, p5 at 14,
+  plus at 17; every puzzle at those five levels contains its new shape; levels 1-4 allow only the
+  six simple shapes; 36 slots relaxed the "few solutions" rule (33 before - levels 3-4 now use only
+  simple pieces, which allow many arrangements); in the browser the popup showed on levels 5, 8, 11,
+  14 and 17 only (L-pieces popup: "New pieces! / Corner / L-piece"). 292 tests pass.
+
+- 2026-10-20 — **Square HUD buttons** (Milestone 9.13). Reset is now a square with "R" and Pause a
+  square with "II" (play symbol while paused), placed on the same row as the money panel and sized
+  to its height. `createHud` builds them and `layoutHud` positions them; it runs again whenever the
+  money total changes, so the squares follow a wider panel. Hint stays a text button below. Verified
+  in the browser: squares level with the money panel and not overlapping it, still aligned after the
+  total grew to $1234, pause toggles II/play, Reset clears placed pieces, the hint still highlights
+  and clears on the right placement, no console errors. Note: while building this I accidentally
+  removed three methods (useHint, refreshHint, placePiece) with the old HUD block; they were restored
+  verbatim and the tests and browser checks cover them again.
+
+- 2026-10-20 — **First real art added** (Milestone 9.14): the 12 pieces, the conveyor belt, the
+  Reset / Pause / Hint icon buttons and the Start Packing button, from the new top-level
+  `assets/` folder.
+  - **Loading:** `assets/` is not under `public/`, so Vite does not serve it by itself. Rather than
+    copying the files (two copies would drift), the Preloader imports them with one Vite glob
+    (`import.meta.glob('../../../assets/*.png', { query: '?url' })`) and loads each under its file
+    name minus .png - which is why the pieces are named after the shape ids. New PNGs dropped into
+    `assets/` are picked up automatically. Verified in both the dev server and a production
+    build (all 19 image requests 200, art bundled into dist/assets).
+  - **Pieces:** the files are exactly 2x the planned size (144 px per cell). `PieceView` now draws
+    the image at the piece's bounding box instead of coloured squares (the per-shape colour table
+    is gone); the new-piece popup uses the same images. The hit-testing, drag and snap logic is
+    unchanged.
+  - **Conveyor + tray (layout change):** the belt (2560x400, shown 1280x200) sits at the bottom of
+    the screen, behind everything. The belt art's usable surface is only ~113 px tall, so the old
+    "wrap pieces into several rows" tray is replaced by **one row on the belt**, centred, with the
+    pieces vertically centred on the belt surface (tall pieces stick out above and below it a
+    little - a deliberate look, not a bug). All pieces share one scale: full size when the row fits
+    across the screen (682 of 800 puzzles), otherwise shrunk uniformly - never below 80% for the
+    shipped puzzles (min 0.5 as a safety floor). The tallest piece is also kept clear of the board.
+    Tested by simulating all 800 puzzles before building it. Note for the truck frame: the belt
+    starts at y 520, so a frame taller than ~456 px starting at y 56 would overlap it.
+  - **HUD:** Reset, Pause and Hint are now 48x48 icon images (the 96x96 files at half size) in one
+    row beside the money panel, which is padded to the same 48 px height. The Hint icon is faded
+    after use as before. There is no "play" icon, so while paused the Pause icon is dimmed
+    instead of swapped - say if you want a separate resume icon.
+  - **Title:** the Start Packing image (2048x768, a pill with a soft glow) is shown at 390x146
+    (pill ~375x88). Only the pill responds to clicks - a click on the glow above it does nothing
+    (tested). The game's title text above it is still a plain text placeholder.
+  - **Verified in the browser:** all 17 textures load; title, level 1/2, the 7-row board, a
+    crowded 6-piece board, the paused state, the hint highlight and the level-5 popup all render
+    correctly; dragging belt -> board and board -> belt works; no console errors.
+    292 tests pass.
+
+- 2026-10-20 — **Truck, shutter, dark belt, button feedback, Cozy Cargo** (Milestone 9.15).
+  Measured the new art first (pixel analysis in the installed browser): the truck is 912x984 art px
+  with a 720x720 grey opening at (96, 96) and margins left 96 / right 96 / top 96 / bottom 168 (the
+  bumper bar plus the wheels); the wheels sit entirely inside the two bottom corners, so a 9-slice
+  never stretches them. The grey is 0x777975. The shutter is 720x720, fully opaque. The new belt is
+  2560x800 (the old 2560x400 file is gone; it is now `conveyor-belt-dark`).
+  - **Layout problem I had to solve (please check this is what you want):** at full width the new
+    belt is 400 design px tall, and a 5x5 truck is 492 tall - more than the 720 px screen together.
+    I kept the art undistorted and showed the belt at **58% of its file size (742 x 232)**, centred
+    along the bottom (so it does not run end to end any more), with the truck standing just behind
+    its back rail (wheels tucked 12 px) and bottom-aligned to it. The largest truck then spans
+    y 8-500, and the belt starts at y 488. Making the belt full width would need either a
+    non-uniform stretch (squashing the rollers into ellipses) or a smaller/shorter truck. The two
+    numbers to change are `BELT_SCALE` and the board's height cap in PuzzleScene.
+  - **Truck frame:** a Phaser 9-slice sized to each board: art width = board width (in art px) +
+    96 + 96, height = board height + 96 + 168. A 5x5 board at full cell size is exactly the
+    artwork's own size (nothing stretched). Header text moved to the top right because tall trucks
+    now reach the top-centre of the screen.
+  - **Grid baked in:** open cells are the truck's grey (0x777975) with darker lines (0x676964, 1.5
+    px), cells share edges (no padding), so it reads as part of the frame. Blocked cells stay dark.
+  - **Parcels on the belt:** drawn at ~42 px per cell (the board's cell is 72) in a single row, with
+    the layout maths in the new pure module `src/core/TrayLayout.js` (+ tests): full size with 8 px
+    gaps if they fit; else the gaps close; else neighbours overlap by at most 20% of the narrower
+    piece or 14 px, spread evenly; only then everything shrinks (floor: half of the preferred
+    size). Later parcels are drawn in front. Measured over all 800 puzzles: 42 px gives overlap in
+    32% of puzzles and never shrinks anything below 77% of target; 50 px (my first try) overlapped
+    44%, so I went smaller as you asked. The most crowded puzzle (9 parcels on a 7-row board) still
+    reads clearly. Parcels grow to board size when picked up (unchanged). Hit areas are now each
+    piece's own cells (padded a little in the tray), so overlapping parcels and L-shaped notches
+    behave: the front one gets the click.
+  - **Shutter:** on a win, the shutter image is cropped to the board's opening and slides down
+    (650 ms, accelerating) until its handle edge reaches the bottom, rests 300 ms, then the usual
+    Win/Day-complete overlay appears (~1.1 s after the last piece). Input is off meanwhile. It is
+    cropped rather than resized because it is square at the largest board's size, so it covers
+    any smaller board.
+  - **Button feedback:** new `pressFeedback.js`. A pressed button shrinks to 90% in 70 ms and
+    springs back (with a small overshoot) in 170 ms on release or if the pointer leaves, centred on
+    its middle whatever its origin. Applied to the HUD icons, Start Packing, Next Truck, the day
+    popup's Shop / Decorate / Next Day / Finish, and the Back buttons. Scene-changing buttons wait
+    ~0.12-0.14 s before acting (and ignore a second click) so the squash is visible; Reset / Pause /
+    Hint act instantly. No separate "pressed" artwork is needed.
+  - **Company:** Cozy Cargo, no tagline (the department line remains).
+  - **Verified in the browser:** the truck fits a 4x2, 5x4, 6x5 and 6x4 board with its top at y 8 or
+    lower on screen; belt and truck positions measured; press scale 0.5 -> 0.45 -> 0.5 with the
+    position restored; a win played the shutter (crop grew 2 -> 126 -> 720 art px) and the overlay
+    came ~1.1 s later with input off in between; no console errors. 304 tests pass (new: TrayLayout).
+
+- 2026-10-21 — **Full-width belt, faster shutter, no stop between trucks** (Milestone 9.16).
+  - Belt now spans the full 1280 width, capped at 230 design px tall (the most that fits under
+    the largest 492 px truck with a 10 px top margin). The current 2560x800 art is squashed to
+    that until a 2560x440 version is supplied. Parcels 52 px/cell, 90% of the belt usable.
+  - Truck still stands on the belt (an earlier lift left the wheels floating); it grows upward,
+    and `create()` shrinks the cell size if a truck would come within 10 px of the screen top.
+  - Shutter 200 ms, plus a 320 ms damped bob/shake of truck, shutter, board and parcels.
+  - Decision: `WinScene` deleted. `handleWin()` now starts the next truck directly; only the last
+    truck of a day launches `DayCompleteScene`. (Earlier entries mentioning WinScene are history.)
+  - Bug fixed: `this.input.enabled = false` (set while closing) persisted into the next truck;
+    `create()` now re-enables it.
+  - Verified in headless Chromium: three wins in a row go truck 1 -> 2 -> 3 -> day pop-up, no
+    console errors; 304 tests pass.
+- 2026-10-21 — **Polish on 9.16:** the bob is now one 5 px down-and-up dip (no x shake, 260 ms);
+  the belt sits 22 px below the screen bottom so its lower rollers are clipped; parcel overlap is
+  switched off again (`TRAY_MAX_OVERLAP*` = 0, crowded rows shrink instead; the every-puzzle test
+  still passes with the smallest parcel >= 60% of its preferred size).
+- 2026-10-21 — **Wheel shadow:** four stacked transparent black bands (fading 55% to 10%) over the top of each wheel, just under the bumper, so the wheels look tucked under the truck. Constants `WHEEL_*` in PuzzleScene; it moves with the truck bob.
+- 2026-10-21 — **Progression shifted one level earlier** (Milestone 9.17). `SHAPE_UNLOCKS` is now
+  level 4 (tri_l, l4), 7 (t4), 10 (s4), 13 (p5), 16 (plus). Regenerated `levels.shapes.json`
+  (800 puzzles, all solvable per `validate-levels.js --shapes`; `levels.json` byte-identical).
+  Tests and docs updated; the new-piece popup needed no code change. Because the puzzles were
+  regenerated, every pool is different from before.

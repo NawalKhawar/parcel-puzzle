@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import companyData from '../../data/company.json';
+import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -7,7 +8,7 @@ import { UI_SCALE } from '../uiScale.js';
  *
  * The end-of-day popup (the "Shift Complete!" screen from docs/game_concept.pdf), shown after
  * the last truck of a level (day) is packed. It is styled as a little report from the
- * player's employer (name, tagline and department come from src/data/company.json) and shows:
+ * player's employer (name and department come from src/data/company.json) and shows:
  *
  *   - how many trucks were completed,
  *   - what the trucks earned and any one-off bonuses (e.g. the first-day bonus), and
@@ -21,7 +22,7 @@ import { UI_SCALE } from '../uiScale.js';
  *               next day, so this button becomes "Finish" and returns to the title screen.
  *
  * PuzzleScene launches this on top of itself (paused), so the finished board shows dimmed
- * behind the popup, the same treatment WinScene uses between trucks. Shop and Apartment hand
+ * behind the popup, the same dimming used for the pause overlay. Shop and Apartment hand
  * this scene's data back via their Back buttons, which restart this scene so the popup
  * reappears exactly as the player left it.
  */
@@ -78,7 +79,7 @@ export class DayCompleteScene extends Scene
         }
         rows.push({ label: 'Total earned today', value: `$${data.earned}`, total: true });
 
-        const headerHeight = 196; // company block + divider + level line, above the rows
+        const headerHeight = 172; // company block + divider + level line, above the rows
         const lastLevelNoteHeight = data.isLastLevel ? 40 : 0;
         const buttonsOffset = headerHeight + rows.length * ROW_HEIGHT + lastLevelNoteHeight + 52;
         const panelWidth = 640 * S;
@@ -87,7 +88,7 @@ export class DayCompleteScene extends Scene
 
         this.add.rectangle(centerX, centerY, panelWidth, panelHeight, 0xfaf3e4).setStrokeStyle(2 * S, 0x3a362f);
 
-        // ---- Company header: name, tagline, and the department the player works in.
+        // ---- Company header: the name, and the department the player works in.
         this.add
             .text(centerX, panelTop + 46 * S, companyData.name, {
                 fontFamily: 'Arial Black',
@@ -96,25 +97,17 @@ export class DayCompleteScene extends Scene
             })
             .setOrigin(0.5);
         this.add
-            .text(centerX, panelTop + 80 * S, companyData.tagline, {
-                fontFamily: 'Arial',
-                fontStyle: 'italic',
-                fontSize: 17 * S,
-                color: '#6b6354',
-            })
-            .setOrigin(0.5);
-        this.add
-            .text(centerX, panelTop + 106 * S, companyData.department.toUpperCase(), {
+            .text(centerX, panelTop + 82 * S, companyData.department.toUpperCase(), {
                 fontFamily: 'Arial',
                 fontSize: 13 * S,
                 color: '#8a7f6a',
             })
             .setOrigin(0.5);
 
-        this.add.rectangle(centerX, panelTop + 128 * S, 540 * S, 2 * S, 0xcfc3a8);
+        this.add.rectangle(centerX, panelTop + 104 * S, 540 * S, 2 * S, 0xcfc3a8);
 
         this.add
-            .text(centerX, panelTop + 158 * S, `Level ${data.levelIndex + 1} complete`, {
+            .text(centerX, panelTop + 134 * S, `Level ${data.levelIndex + 1} complete`, {
                 fontFamily: 'Arial Black',
                 fontSize: 20 * S,
                 color: '#3a362f',
@@ -167,7 +160,7 @@ export class DayCompleteScene extends Scene
                 })
                 .setOrigin(0.5)
                 .setInteractive({ useHandCursor: true });
-            button.on('pointerdown', onClick);
+            makePressable(this, button, onClick, { delay: 140 });
             return button;
         };
 
