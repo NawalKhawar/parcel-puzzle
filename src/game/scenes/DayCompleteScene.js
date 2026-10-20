@@ -1,14 +1,14 @@
 import { Scene } from 'phaser';
-import companyData from '../../data/company.json';
 import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
+import { playSfx, stopBgm } from '../audio.js';
 
 /**
  * DayCompleteScene.js
  *
- * The end-of-day popup (the "Shift Complete!" screen from docs/game_concept.pdf), shown after
- * the last truck of a level (day) is packed. It is styled as a little report from the
- * player's employer (name and department come from src/data/company.json) and shows:
+ * The end-of-day report screen, shown after the last truck of a level (day) is packed. It is a
+ * full-screen clipboard (assets/clipboard-screen.png, which has the company name and department
+ * printed on it) with a "Day N Report" heading and the day's figures written on the paper. It shows:
  *
  *   - how many trucks were completed,
  *   - a breakdown of what was earned per truck difficulty (e.g. "2 Easy trucks  $20"),
@@ -22,18 +22,26 @@ import { UI_SCALE } from '../uiScale.js';
  *   Next Day  - starts truck 1 of the next level. On the very last level there is no
  *               next day, so this button becomes "Finish" and returns to the title screen.
  *
- * PuzzleScene launches this on top of itself (paused), so the finished board shows dimmed
- * behind the popup, the same dimming used for the pause overlay. Shop and Apartment hand
+ * PuzzleScene launches this on top of itself (paused); the clipboard art covers the whole screen. Shop and Apartment hand
  * this scene's data back via their Back buttons, which restart this scene so the popup
  * reappears exactly as the player left it.
  */
 
-/** Vertical spacing between the report's rows, in design pixels. */
-const ROW_HEIGHT = 36;
+/** Preferred vertical spacing between the report's rows, in design pixels (shrinks if many rows). */
+const ROW_HEIGHT = 64;
+
+/** The lowest y (design pixels) the last report row (or the last-level note) may reach, so the buttons below it still fit on the paper. */
+const ROWS_BOTTOM_LIMIT = 560;
+
+/** Gap (design pixels) from the bottom of the report text down to the centre of the button row. */
+const BUTTONS_GAP = 95;
 
 /** The order the difficulty breakdown rows are shown in, and their display names. */
 const DIFFICULTY_ORDER = ['easy', 'medium', 'hard'];
 const DIFFICULTY_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+
+/** The total line's text colour - a warm rust, so it stands out from the dark-brown rows and green bonuses. */
+const TOTAL_COLOR = '#c0501f';
 
 export class DayCompleteScene extends Scene
 {
@@ -66,11 +74,27 @@ export class DayCompleteScene extends Scene
     {
         const S = UI_SCALE;
         const data = this.dayData;
+
+        // This is a screen of its own: hide the paused game scene underneath and paint the
+        // background black (it shows through the clipboard art's rounded corners).
+        this.cameras.main.setBackgroundColor(0x000000);
+        this.scene.setVisible(false, 'PuzzleScene');
+
+        // Silence the gameplay music and play the jingle - once per report, not again when
+        // returning from the Shop/Decorate screens (they hand this same data object back).
+        stopBgm();
+        if (!data.jinglePlayed)
+        {
+            data.jinglePlayed = true;
+            playSfx(this, 'level-complete');
+        }
         const centerX = this.scale.width / 2;
         const centerY = this.scale.height / 2;
 
-        // Dim the whole screen so the finished board is visible but clearly not the focus.
-        this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.45);
+        // The clipboard art fills the whole screen (this is its own screen now, not a popup over
+        // the board). The art already has the company name and department printed on it, so
+        // none of that is drawn in code.
+        this.add.image(centerX, centerY, 'clipboard-screen').setDisplaySize(this.scale.width, this.scale.height);
 
         // ---- Work out the report's rows first, so the panel can be sized to fit them.
         // Each row is a label on the left and a value on the right, like a payslip.
@@ -94,59 +118,49 @@ export class DayCompleteScene extends Scene
         {
             rows.push({ label: bonus.label, value: `+$${bonus.amount}`, color: '#3f7d4e' });
         }
-        rows.push({ label: 'Total earned today', value: `$${data.earned}`, total: true });
+        rows.push({ label: 'Total earned today', value: `$${data.earned}`, total: true, color: TOTAL_COLOR });
 
-        const headerHeight = 172; // company block + divider + level line, above the rows
-        const lastLevelNoteHeight = data.isLastLevel ? 40 : 0;
-        const buttonsOffset = headerHeight + rows.length * ROW_HEIGHT + lastLevelNoteHeight + 52;
-        const panelWidth = 640 * S;
-        const panelHeight = (buttonsOffset + 56) * S;
-        const panelTop = centerY - panelHeight / 2;
+        // Vertical layout in design pixels, measured on the clipboard art: the printed heading block
+        // ends around y=175, so the "Day N report" title sits just under it, then the rows, then
+        // the buttons below the last row (kept above the bottom edge of the paper at ~y=686).
+        const titleY = 244;
+        const headerHeight = 330; // y of the first report row
+        // Spread the rows out generously, but squeeze them together when a long report (many
+        // bonuses) would otherwise run into the buttons. The last-level note needs extra room.
+        const noteRoom = data.isLastLevel ? 30 : 0;
+        const rowHeight = Math.max(34, Math.min(ROW_HEIGHT, (ROWS_BOTTOM_LIMIT - noteRoom - headerHeight) / Math.max(1, rows.length - 1)));
+        // The buttons follow the text: a fixed gap below the last line, so they ride down when
+        // the report is longer and up when it is shorter.
+        const buttonsOffset = headerHeight + (rows.length - 1) * rowHeight + noteRoom + BUTTONS_GAP;
+        const panelTop = 0; // the rows/buttons below are positioned from the top of the screen
 
-        this.add.rectangle(centerX, centerY, panelWidth, panelHeight, 0xfaf3e4).setStrokeStyle(2 * S, 0x3a362f);
-
-        // ---- Company header: the name, and the department the player works in.
         this.add
-            .text(centerX, panelTop + 46 * S, companyData.name, {
+            .text(centerX, titleY * S, `Day ${data.levelIndex + 1} Report`, {
                 fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                fontSize: 30 * S,
+                fontSize: 52 * S,
                 color: '#3a362f',
             })
             .setOrigin(0.5);
-        this.add
-            .text(centerX, panelTop + 82 * S, companyData.department.toUpperCase(), {
-                fontFamily: 'Fredoka, Arial', fontStyle: '400',
-                fontSize: 13 * S,
-                color: '#8a7f6a',
-            })
-            .setOrigin(0.5);
 
-        this.add.rectangle(centerX, panelTop + 104 * S, 540 * S, 2 * S, 0xcfc3a8);
-
-        this.add
-            .text(centerX, panelTop + 134 * S, `Level ${data.levelIndex + 1} complete`, {
-                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                fontSize: 20 * S,
-                color: '#3a362f',
-            })
-            .setOrigin(0.5);
+        // A thin rule under the title, in the same tone as the receipt-style total rule below.
+        this.add.rectangle(centerX, (titleY + 42) * S, 640 * S, 2 * S, 0xcfc3a8);
 
         // ---- The report rows.
-        const labelX = centerX - 230 * S;
-        const valueX = centerX + 230 * S;
+        const labelX = centerX - 300 * S;
+        const valueX = centerX + 300 * S;
         rows.forEach((row, index) => {
-            const y = panelTop + (headerHeight + index * ROW_HEIGHT) * S;
+            const y = panelTop + (headerHeight + index * rowHeight) * S;
 
             if (row.total)
             {
                 // A thin rule above the total, like the sum line on a receipt.
-                this.add.rectangle(centerX, y - (ROW_HEIGHT / 2) * S, 460 * S, 1 * S, 0xcfc3a8);
+                this.add.rectangle(centerX, y - (rowHeight / 2) * S, 600 * S, 2 * S, 0xcfc3a8);
             }
 
             const style = {
                 fontFamily: row.total ? 'Fredoka, Arial Black' : 'Fredoka, Arial',
                 fontStyle: row.total ? '700' : '400',
-                fontSize: (row.total ? 24 : 21) * S,
+                fontSize: (row.total ? 34 : 29) * S,
                 color: row.color ?? '#3a362f',
             };
             this.add.text(labelX, y, row.label, style).setOrigin(0, 0.5);
@@ -156,9 +170,9 @@ export class DayCompleteScene extends Scene
         if (data.isLastLevel)
         {
             this.add
-                .text(centerX, panelTop + (headerHeight + rows.length * ROW_HEIGHT + 14) * S, "That's every level - great work!", {
+                .text(centerX, panelTop + (headerHeight + (rows.length - 1) * rowHeight + noteRoom) * S, "That's every level - great work!", {
                     fontFamily: 'Fredoka, Arial', fontStyle: '400',
-                    fontSize: 18 * S,
+                    fontSize: 22 * S,
                     color: '#6b6354',
                 })
                 .setOrigin(0.5);
@@ -166,15 +180,15 @@ export class DayCompleteScene extends Scene
 
         // ---- Three buttons in a row. A tiny local helper keeps their styling identical.
         const buttonY = panelTop + buttonsOffset * S;
-        const spacing = 200 * S;
-        const makeButton = (x, label, onClick) => {
+        const spacing = 290 * S;
+        const makeButton = (x, label, fill, onClick) => {
             const button = this.add
                 .text(x, buttonY, label, {
                     fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                    fontSize: 24 * S,
+                    fontSize: 30 * S,
                     color: '#3a362f',
-                    backgroundColor: '#f0b86e',
-                    padding: { x: 22 * S, y: 12 * S },
+                    backgroundColor: fill,
+                    padding: { x: 32 * S, y: 18 * S },
                 })
                 .setOrigin(0.5)
                 .setInteractive({ useHandCursor: true });
@@ -182,19 +196,20 @@ export class DayCompleteScene extends Scene
             return button;
         };
 
-        makeButton(centerX - spacing, 'Shop', () => this.scene.start('ShopScene', data));
-        makeButton(centerX, 'Decorate', () => this.scene.start('ApartmentScene', data));
+        // One colour per button so they're easy to tell apart at a glance.
+        makeButton(centerX - spacing, 'Shop', '#8fc1e3', () => this.scene.start('ShopScene', data));
+        makeButton(centerX, 'Decorate', '#a3d29c', () => this.scene.start('ApartmentScene', data));
 
         if (data.isLastLevel)
         {
-            makeButton(centerX + spacing, 'Finish', () => {
+            makeButton(centerX + spacing, 'Finish', '#f0b86e', () => {
                 this.scene.stop('PuzzleScene');
                 this.scene.start('TitleScene');
             });
         }
         else
         {
-            makeButton(centerX + spacing, 'Next Day', () => {
+            makeButton(centerX + spacing, 'Next Day', '#f0b86e', () => {
                 // Stop PuzzleScene explicitly so the next day gets a brand-new instance
                 // (clean Grid, new PieceViews) rather than leftovers from the last truck.
                 this.scene.stop('PuzzleScene');

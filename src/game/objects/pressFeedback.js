@@ -7,6 +7,8 @@
  * separate "pressed" version of the artwork.
  */
 
+import { playSfx } from '../audio.js';
+
 /** How small a button gets while pressed (1 = normal size). */
 const PRESSED_SCALE = 0.9;
 const PRESS_MS = 70;
@@ -81,6 +83,7 @@ export function makePressable(scene, target, onActivate, options = {}) {
             };
         }
         animateTo(PRESSED_SCALE, PRESS_MS, 'Quad.easeOut');
+        playSfx(scene, 'pop');
 
         if (delay > 0) {
             activated = true;

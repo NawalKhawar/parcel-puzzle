@@ -15,6 +15,12 @@ import '@fontsource/fredoka/700.css';
  */
 const ART = import.meta.glob('../../../assets/*.png', { eager: true, query: '?url', import: 'default' });
 
+/**
+ * Every sound in assets/ (the two music tracks and the sound effects), loaded the same way as the
+ * art - by file name without the extension, so assets/pop.mp3 becomes the sound 'pop'. See audio.js.
+ */
+const AUDIO = import.meta.glob('../../../assets/*.mp3', { eager: true, query: '?url', import: 'default' });
+
 export class Preloader extends Scene
 {
     constructor ()
@@ -70,6 +76,11 @@ export class Preloader extends Scene
                 key = 'warehouse-background';
             }
             this.load.image(key, url);
+        }
+
+        for (const [file, url] of Object.entries(AUDIO))
+        {
+            this.load.audio(file.split('/').pop().replace(/\.mp3$/, ''), url);
         }
 
         //  Template leftover, from public/assets.

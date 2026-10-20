@@ -11,6 +11,8 @@ import { showNewPieceIntro } from '../objects/NewPieceIntro.js';
 import { WorkerCharacter } from '../objects/WorkerCharacter.js';
 import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
+import { playSfx, playBgm, GAMEPLAY_BGM_VOLUME } from '../audio.js';
+import { addUiPanel } from '../objects/uiPanel.js';
 
 /**
  * PuzzleScene.js
@@ -205,6 +207,24 @@ const CHARACTER_DEPTH = 15; // the worker character, standing just in front of e
 const SHUTTER_DEPTH = 60; // covers the board, over the parcels placed on it
 const FLOATING_REWARD_DEPTH = 70; // the rising "+$X" text, above even the shutter
 const DRAG_DEPTH = 500; // the parcel being carried
+const PAUSE_DEPTH = 1000; // the pause overlay: above the whole scene (worker included), below the new-piece popup
+
+/** The worker "thinks" (see WorkerCharacter.think) after this long with no clicks/drags (ms)... */
+const THINK_IDLE_MS = 12000;
+/** ...or after this long on the same truck since he last thought, even if the player is busy (ms). */
+const THINK_SLOW_MS = 35000;
+
+/** If the player goes this long without clicking or dragging, the Hint button pulses (ms). */
+const HINT_PULSE_IDLE_MS = 5500;
+/** How long one pulse lasts before the button settles back to its normal size (ms). */
+const HINT_PULSE_MS = 3000;
+/** How much bigger the Hint button gets at the top of each beat (1 = normal size). */
+const HINT_PULSE_GROW = 1.12;
+/** Length of one grow-or-shrink beat of the pulse (ms). */
+const HINT_PULSE_BEAT_MS = 500;
+/** The pulse repeats every HINT_PULSE_IDLE_MS while the player stays idle, but never more than
+ *  this many times in a row - any click/drag resets the streak, letting it nudge again later. */
+const HINT_PULSE_MAX_STREAK = 2;
 
 /** How long the shutter takes to roll down, and how long the closed truck rests (after its bob)
  *  before the next truck starts or the overlay appears (ms). */
@@ -222,6 +242,24 @@ const TRUCK_BOB_PX = 5 * UI_SCALE;
 
 /** Size (design pixels) of the square HUD icon buttons (assets/*-icon.png are 96x96, drawn at half). */
 const HUD_BUTTON_SIZE = 48 * UI_SCALE;
+
+/** assets/money-HUD.png is 270x96 (a cash icon on its left third, blank panel on the right) -
+ *  drawn at the same height as the icon squares, keeping its own aspect ratio for the width. */
+const MONEY_PANEL_HEIGHT = HUD_BUTTON_SIZE;
+const MONEY_PANEL_WIDTH = MONEY_PANEL_HEIGHT * (270 / 96);
+/** How far from the panel's right edge the amount is right-aligned (design pixels before UI_SCALE). */
+const MONEY_TEXT_RIGHT_PADDING = 16 * UI_SCALE;
+
+/** assets/whiteboard-HUD.png is 440x240 art pixels: a calendar icon (centred ~y81) above a truck
+ *  icon (centred ~y172), both on the left, with blank board to their right for the numbers.
+ *  Drawn at half size (220x120), pinned to the top-right corner. */
+const WHITEBOARD_SCALE = 0.5 * UI_SCALE;
+const WHITEBOARD_WIDTH = 440 * WHITEBOARD_SCALE;
+const WHITEBOARD_HEIGHT = 240 * WHITEBOARD_SCALE;
+/** Where the numbers start, and the heights of the two rows - all in the art's own pixels. */
+const WHITEBOARD_TEXT_X = 150;
+const WHITEBOARD_DAY_Y = 82;
+const WHITEBOARD_TRUCK_Y = 172;
 
 /**
  * THE WORKER CHARACTER (see objects/WorkerCharacter.js): stands in the left margin, at a fixed
@@ -281,6 +319,19 @@ export class PuzzleScene extends Scene
 
         this.hasWon = false;
         this.isPaused = false;
+        /** True while the "New piece!" popup is up (the thinking clocks don't run then). */
+        this.introShowing = false;
+        /** Milliseconds since the last click/drag, and since the worker last thought (or the truck began). */
+        this.idleMs = 0;
+        this.slowMs = 0;
+        /** Milliseconds since the last click/drag, for the repeating Hint pulse. */
+        this.hintIdleMs = 0;
+        /** How many pulses have fired back-to-back with no click/drag in between (caps at HINT_PULSE_MAX_STREAK). */
+        this.hintPulseStreak = 0;
+        /** The running Hint pulse tween, if any. */
+        this.hintPulseTween = undefined;
+        /** The Hint button's normal scale, captured when it is built, to pulse from and settle back to. */
+        this.hintBaseScale = undefined;
         /** Each truck allows one hint; a fresh scene instance per truck resets this. */
         this.hintUsed = false;
         /** The hinted target ({ shapeId, row, col }) once the hint has been used, else null. */
@@ -434,18 +485,24 @@ export class PuzzleScene extends Scene
 
         this.gridView = new GridView(this, boardX, boardY, this.grid, this.cellSize);
 
-        // "Level N · Truck k/total" header, top right (the truck can reach the top-centre of
-        // the screen on tall boards). The truck total is read from the level's own truck list, so
-        // it stays correct automatically as levels are edited. Difficulty is shown too, which
-        // makes the ramp visible.
+        // Whiteboard HUD, top right: "Day N" beside the calendar and "k/total" beside the truck
+        // icon. The truck total is read from the level's own truck list, so it stays correct
+        // automatically as levels are edited.
         const trucksTotal = this.levelData.trucks.length;
+        const boardLeft = this.scale.width - 16 * UI_SCALE - WHITEBOARD_WIDTH;
+        const boardTop = 16 * UI_SCALE;
+        this.add.image(boardLeft, boardTop, 'whiteboard-HUD').setOrigin(0, 0).setScale(WHITEBOARD_SCALE);
+        const whiteboardTextStyle = {
+            fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
+            fontSize: 26 * UI_SCALE,
+            color: '#3a362f',
+        };
         this.add
-            .text(this.scale.width - 24 * UI_SCALE, 28 * UI_SCALE, `Level ${this.levelIndex + 1}  ·  Truck ${this.truckIndex + 1}/${trucksTotal}  ·  ${truck.difficulty ?? ''}`, {
-                fontFamily: 'Fredoka, Arial', fontStyle: '400',
-                fontSize: 20 * UI_SCALE,
-                color: '#3a362f',
-            })
-            .setOrigin(1, 0.5);
+            .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE, boardTop + WHITEBOARD_DAY_Y * WHITEBOARD_SCALE, `Day ${this.levelIndex + 1}`, whiteboardTextStyle)
+            .setOrigin(0, 0.5);
+        this.add
+            .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE, boardTop + WHITEBOARD_TRUCK_Y * WHITEBOARD_SCALE, `${this.truckIndex + 1}/${trucksTotal}`, whiteboardTextStyle)
+            .setOrigin(0, 0.5);
 
         this.layoutTray();
         this.wireDragEvents();
@@ -455,7 +512,92 @@ export class PuzzleScene extends Scene
         // first truck; later trucks are fresh scene instances and must not repeat it).
         if (this.truckIndex === 0 && this.levelData.newShapes.length > 0)
         {
-            showNewPieceIntro(this, this.levelData.newShapes);
+            this.introShowing = true;
+            showNewPieceIntro(this, this.levelData.newShapes, () => {
+                this.introShowing = false;
+            });
+        }
+
+        // Gameplay music. If it is already playing (this is the next truck of the same day) it
+        // just carries on; it is stopped by DayCompleteScene and restarted here on the next day.
+        playBgm(this, 'gameplay-bgm', GAMEPLAY_BGM_VOLUME);
+
+        // Any press or release counts as the player being active, which restarts the idle clock
+        // and - since the player is no longer idle - resets the Hint pulse streak too, so a later
+        // idle spell can nudge them again.
+        const noteActivity = () => { this.idleMs = 0; this.hintIdleMs = 0; this.hintPulseStreak = 0; };
+        this.input.on('pointerdown', noteActivity);
+        this.input.on('pointerup', noteActivity);
+    }
+
+    /**
+     * Per-frame: runs the clocks that make the worker think. They only advance while the player
+     * could actually be playing (not paused, not solved, not during the new-piece popup).
+     *
+     * @param {number} time - total game time in ms (unused).
+     * @param {number} delta - milliseconds since the last frame.
+     */
+    update (time, delta)
+    {
+        if (this.isPaused || this.hasWon || this.introShowing || !this.worker)
+        {
+            return;
+        }
+        this.idleMs += delta;
+        this.slowMs += delta;
+        if (this.idleMs >= THINK_IDLE_MS || this.slowMs >= THINK_SLOW_MS)
+        {
+            this.worker.think();
+            // Start both clocks over, so the next thought is a full interval away.
+            this.idleMs = 0;
+            this.slowMs = 0;
+        }
+
+        // The Hint button nudges the player if they've gone quiet for a while, repeating every
+        // HINT_PULSE_IDLE_MS as long as they stay idle, up to HINT_PULSE_MAX_STREAK times in a row.
+        if (this.hintButton && !this.hintUsed && this.hintPulseStreak < HINT_PULSE_MAX_STREAK)
+        {
+            this.hintIdleMs += delta;
+            if (this.hintIdleMs >= HINT_PULSE_IDLE_MS)
+            {
+                this.hintIdleMs = 0;
+                this.hintPulseStreak += 1;
+                this.pulseHint();
+            }
+        }
+    }
+
+    /**
+     * Makes the Hint button grow and shrink gently for HINT_PULSE_MS. The tween runs an even
+     * number of legs (grow, shrink, grow, ...) so it finishes back at the button's normal size.
+     */
+    pulseHint ()
+    {
+        const button = this.hintButton;
+        this.hintPulseTween = this.tweens.add({
+            targets: button,
+            scaleX: this.hintBaseScale.x * HINT_PULSE_GROW,
+            scaleY: this.hintBaseScale.y * HINT_PULSE_GROW,
+            duration: HINT_PULSE_BEAT_MS,
+            ease: 'Sine.easeInOut',
+            yoyo: true,
+            // Each repeat adds a grow and a shrink, so this gives HINT_PULSE_MS / beat legs in total.
+            repeat: HINT_PULSE_MS / HINT_PULSE_BEAT_MS / 2 - 1,
+        });
+    }
+
+    /**
+     * Cancels a running Hint pulse and snaps the button straight back to its normal size - no
+     * eased return. Called when the player presses the button (so the press squash starts from
+     * the normal size), when the hint is used, and when a piece is picked up mid-pulse.
+     */
+    stopHintPulse ()
+    {
+        if (this.hintPulseTween)
+        {
+            this.hintPulseTween.stop();
+            this.hintPulseTween = undefined;
+            this.hintButton.setScale(this.hintBaseScale.x, this.hintBaseScale.y);
         }
     }
 
@@ -567,9 +709,9 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * Creates the top-left HUD: the money panel, with the square icon buttons beside it on the
-     * same row - Reset, Pause and (from level 2) Hint. The money panel is padded to the same
-     * height as the squares, so the row reads as one bar. The buttons are separate,
+     * Creates the top-left HUD: a column of square icon buttons - Pause, then (from level 2)
+     * Hint, then Reset - with the money panel to the right of Pause on the top row. The money
+     * panel is padded to the same height as the squares, so the top row reads as one bar. The buttons are separate,
      * always-interactive GameObjects (not PieceViews), so they keep working even while Pause
      * has disabled dragging on every piece.
      */
@@ -580,22 +722,29 @@ export class PuzzleScene extends Scene
         // PuzzleScene instance, and carries over from day to day (the `?? 0` is a
         // safety net for an unset registry key).
         const totalEarned = this.registry.get('totalEarned') ?? 0;
-        this.coinText = this.add.text(16 * UI_SCALE, 16 * UI_SCALE, `$${totalEarned}`, {
-            fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-            fontSize: 18 * UI_SCALE,
-            color: '#3a362f',
-            backgroundColor: '#f6dca0',
-            padding: { x: 14 * UI_SCALE, y: 8 * UI_SCALE },
-        });
-        // Pad the panel vertically so it is exactly as tall as the icon squares.
-        const lineHeight = this.coinText.height - 16 * UI_SCALE;
-        this.coinText.setPadding({ x: 14 * UI_SCALE, y: (HUD_BUTTON_SIZE - lineHeight) / 2 });
+        // The art itself is the panel (cash icon plus a blank strip to its right); the amount is
+        // a plain text object drawn on top of that blank strip, right-aligned, with no "$" -
+        // the icon is what says "this is money" now.
+        this.moneyPanel = this.add.image(0, 0, 'money-HUD').setOrigin(0, 0).setDisplaySize(MONEY_PANEL_WIDTH, MONEY_PANEL_HEIGHT);
+        this.coinText = this.add
+            .text(0, 0, `${totalEarned}`, {
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
+                fontSize: 18 * UI_SCALE,
+                color: '#3a362f',
+            })
+            .setOrigin(1, 0.5);
 
-        const makeIconButton = (textureKey, onClick) => {
+        const makeIconButton = (textureKey, onClick, onPress) => {
             const button = this.add
                 .image(0, 0, textureKey)
                 .setDisplaySize(HUD_BUTTON_SIZE, HUD_BUTTON_SIZE)
                 .setInteractive({ useHandCursor: true });
+            // Registered before makePressable so the press handles the button's normal size, not a
+            // mid-pulse one (see stopHintPulse).
+            if (onPress)
+            {
+                button.on('pointerdown', onPress);
+            }
             // Squashes when pressed (see objects/pressFeedback.js); these act in place, so no delay.
             makePressable(this, button, onClick);
             return button;
@@ -608,33 +757,41 @@ export class PuzzleScene extends Scene
         // the very first day stays hint-free.
         if (this.levelIndex >= 1)
         {
-            this.hintButton = makeIconButton('hint-icon', () => this.useHint());
+            this.hintButton = makeIconButton('hint-icon', () => this.useHint(), () => this.stopHintPulse());
+            this.hintBaseScale = { x: this.hintButton.scaleX, y: this.hintButton.scaleY };
         }
 
         this.layoutHud();
     }
 
     /**
-     * Places the HUD row: the icon buttons sit to the right of the money panel, level with it.
-     * Called once when the HUD is built and again whenever the money total changes, since a
-     * bigger total makes the panel wider.
+     * Places the HUD: the icon buttons stack down the left edge (Pause, Hint if present, Reset),
+     * and the money panel sits to the right of the Pause button on the top row. Called once when
+     * the HUD is built and again whenever the money total changes (the panel's width changes,
+     * though its left edge doesn't, so this is cheap and safe to repeat).
      */
     layoutHud ()
     {
         const gap = 8 * UI_SCALE;
-        const y = this.coinText.y;
+        const margin = 16 * UI_SCALE;
 
-        let x = this.coinText.x + this.coinText.width + gap;
-        for (const button of [this.resetButton, this.pauseButton, this.hintButton])
+        let y = margin;
+        for (const button of [this.pauseButton, this.hintButton, this.resetButton])
         {
             if (!button)
             {
                 continue;
             }
             // The buttons are positioned by their centres (so the press squash is centred).
-            button.setPosition(x + HUD_BUTTON_SIZE / 2, y + HUD_BUTTON_SIZE / 2);
-            x += HUD_BUTTON_SIZE + gap;
+            button.setPosition(margin + HUD_BUTTON_SIZE / 2, y + HUD_BUTTON_SIZE / 2);
+            y += HUD_BUTTON_SIZE + gap;
         }
+
+        // The money panel: level with the top button (Pause), just to its right. The amount sits
+        // right-aligned near the panel's right edge, vertically centred on it.
+        const panelX = margin + HUD_BUTTON_SIZE + gap;
+        this.moneyPanel.setPosition(panelX, margin);
+        this.coinText.setPosition(panelX + MONEY_PANEL_WIDTH - MONEY_TEXT_RIGHT_PADDING, margin + MONEY_PANEL_HEIGHT / 2);
     }
 
     /**
@@ -667,6 +824,7 @@ export class PuzzleScene extends Scene
 
         this.hintUsed = true;
         this.hint = hint;
+        this.stopHintPulse();
         this.hintButton.disableInteractive();
         this.tweens.add({ targets: this.hintButton, alpha: 0.3, duration: 400 });
 
@@ -751,6 +909,12 @@ export class PuzzleScene extends Scene
             // Draw the piece being dragged above every other piece and the board, so it
             // visibly sits "in hand" rather than being occluded while moving over them.
             gameObject.setDepth(DRAG_DEPTH);
+            playSfx(this, 'pop');
+
+            // Picking up a piece mid-pulse cuts the Hint button back to its normal size right
+            // away, rather than letting it finish its current beat (stopHintPulse already does
+            // this snap, not an eased return).
+            this.stopHintPulse();
 
             // Grabbing a piece that is on the board takes it off the Grid straight away, so
             // its own old cells don't count as occupied when it is dropped back nearby.
@@ -811,6 +975,7 @@ export class PuzzleScene extends Scene
 
             if (isValid)
             {
+                playSfx(this, 'pop-high');
                 this.placePiece(pieceView, row, col);
             }
             else if (cameFrom && this.isNearBoard(gameObject.x, gameObject.y))
@@ -932,36 +1097,61 @@ export class PuzzleScene extends Scene
             }
         }
 
-        // There is no separate "resume" icon, so the button is dimmed while the game is paused.
-        this.pauseButton.setTint(this.isPaused ? 0xb8b0a0 : 0xffffff);
-
         if (this.isPaused)
         {
-            const centerX = this.scale.width / 2;
-            const centerY = this.scale.height / 2;
-            this.pauseOverlay = this.add.container(0, 0, [
-                this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.45),
-                this.add
-                    .text(centerX, centerY, 'Paused', {
-                        fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                        fontSize: 40 * UI_SCALE,
-                        color: '#ffffff',
-                        stroke: '#3a362f',
-                        strokeThickness: 6 * UI_SCALE,
-                    })
-                    .setOrigin(0.5),
-            ]);
-            // The overlay would otherwise visually bury the Pause button (now reading
-            // "Resume") under the dim layer, even though it would still technically
-            // receive clicks — bring it above the overlay so the player can actually
-            // see what to click to get back in.
-            this.children.bringToTop(this.pauseButton);
+            this.createPauseMenu();
         }
         else if (this.pauseOverlay)
         {
             this.pauseOverlay.destroy();
             this.pauseOverlay = undefined;
         }
+    }
+
+    /**
+     * Builds the pause menu: a dim layer over the WHOLE scene (it sits at PAUSE_DEPTH, above the
+     * worker and every other object, and swallows clicks so nothing underneath can be touched)
+     * with a small panel holding a Resume button and a Quit button (back to the title screen).
+     */
+    createPauseMenu ()
+    {
+        const S = UI_SCALE;
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
+
+        // A small local helper keeps both buttons' styling identical.
+        const makeButton = (y, label, fill, onClick, delay) => {
+            const button = this.add
+                .text(centerX, y, label, {
+                    fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
+                    fontSize: 28 * S,
+                    color: '#3a362f',
+                    backgroundColor: fill,
+                    padding: { x: 36 * S, y: 14 * S },
+                })
+                .setOrigin(0.5)
+                .setInteractive({ useHandCursor: true });
+            makePressable(this, button, onClick, { delay });
+            return button;
+        };
+
+        const blocker = this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.55).setInteractive();
+        // The panel's wood frame is ~37px thick, so the paper to lay content on is the panel
+        // minus that on every side. The content (title, two buttons, even gaps) is centred
+        // vertically in that paper, hence the symmetric offsets below.
+        const panel = addUiPanel(this, centerX, centerY, 360 * S, 350 * S);
+        const title = this.add
+            .text(centerX, centerY - 86 * S, 'Paused', {
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
+                fontSize: 44 * S,
+                color: '#3a362f',
+            })
+            .setOrigin(0.5);
+        const resume = makeButton(centerY - 5 * S, 'Resume', '#a3d29c', () => this.togglePause(), 0);
+        // Quit leaves the scene, so a short delay lets the press squash be seen first.
+        const quit = makeButton(centerY + 81 * S, 'Quit', '#8fc1e3', () => this.scene.start('TitleScene'), 140);
+
+        this.pauseOverlay = this.add.container(0, 0, [blocker, panel, title, resume, quit]).setDepth(PAUSE_DEPTH);
     }
 
     /**
@@ -994,11 +1184,14 @@ export class PuzzleScene extends Scene
         byDifficulty[difficultyKey] = { count: soFar.count + 1, earned: soFar.earned + reward };
         this.registry.set('dayByDifficulty', byDifficulty);
 
-        // The worker celebrates harder for a hard truck than for an easy/medium one, and the
-        // reward floats up over the board - both fire right away, not after the shutter closes,
-        // so the player sees them as part of "I just solved this" rather than the truck leaving.
-        this.worker.react(difficultyKey === 'hard' ? 'celebrate' : 'happy');
+        // The worker's reaction scales with difficulty: happy (easy), happy2 (medium), celebrate
+        // (hard). The reward floats up over the board - both fire right away, not after the
+        // shutter closes, so the player sees them as part of "I just solved this" rather than
+        // the truck leaving.
+        const reactionPose = { easy: 'happy', medium: 'happy2', hard: 'celebrate' }[difficultyKey] ?? 'happy';
+        this.worker.react(reactionPose);
         this.showFloatingReward(reward);
+        playSfx(this, 'cash-register'); // in step with the rising "+$N" text
 
         const trucksTotal = this.levelData.trucks.length;
         const isLastTruck = this.truckIndex === trucksTotal - 1;
@@ -1014,7 +1207,7 @@ export class PuzzleScene extends Scene
         }
 
         // Keep the HUD counter (visible dimmed behind the overlay) in step with the popup.
-        this.coinText.setText(`$${totalEarned}`);
+        this.coinText.setText(`${totalEarned}`);
         this.layoutHud();
 
         this.gridView.clearHint();

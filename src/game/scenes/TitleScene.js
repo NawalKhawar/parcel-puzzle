@@ -1,5 +1,6 @@
 import { Geom, Scene } from 'phaser';
 import { makePressable } from '../objects/pressFeedback.js';
+import { playBgm, TITLE_BGM_VOLUME } from '../audio.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -35,6 +36,9 @@ export class TitleScene extends Scene
         // whole screen; the game's own 1280x720 design is near enough the same ratio that this
         // is effectively undistorted.
         this.add.image(0, 0, 'title-bg').setOrigin(0, 0).setDisplaySize(this.scale.width, this.scale.height);
+
+        // Title music (replaces the gameplay music when arriving here from Quit).
+        playBgm(this, 'title-bgm', TITLE_BGM_VOLUME);
 
         const buttonX = this.scale.width * BUTTON_X_FRACTION;
         const buttonY = this.scale.height * BUTTON_Y_FRACTION;

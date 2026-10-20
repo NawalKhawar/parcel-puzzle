@@ -9,8 +9,11 @@ import { UI_SCALE } from '../uiScale.js';
  *
  *   - neutral   - the default, idle pose, shown throughout a puzzle. It gets a slow "breathing"
  *                 bob so the screen doesn't feel static while the player is thinking.
- *   - happy     - shown the moment an easy or medium truck is solved.
- *   - celebrate - shown the moment a hard truck is solved (it earns the bigger reaction).
+ *   - thinking  - shown for a few seconds when the player has been idle or slow on a puzzle
+ *                 (PuzzleScene decides when; see think()), then back to neutral.
+ *   - happy     - shown the moment an easy truck is solved.
+ *   - happy2    - shown the moment a medium truck is solved (assets/worker-happy2.png).
+ *   - celebrate - shown the moment a hard truck is solved (it earns the biggest reaction).
  *
  * Also draws its own ground shadow - a flattened ellipse, not the truck's trapezoid (a single
  * standing figure doesn't need a shape that reads as "a rectangle in perspective" the way the
@@ -30,6 +33,9 @@ import { UI_SCALE } from '../uiScale.js';
 const IDLE_BOB_MS = 1800;
 /** How much taller (as a multiple of normal height) the character gets at the peak of a breath. */
 const IDLE_STRETCH = 1.02;
+
+/** How long the thinking pose is held before the worker goes back to neutral (ms). */
+const THINK_MS = 3500;
 
 /** The little "pop" when switching to a reaction pose: how far it scales up, and how long. */
 const REACT_POP_SCALE = 1.18;
@@ -108,13 +114,53 @@ export class WorkerCharacter
     }
 
     /**
+     * Switches to the thinking pose for THINK_MS, then back to neutral. The idle bob keeps going
+     * throughout. Ignored if already thinking, or once a reaction pose has been shown (the truck
+     * is solved - the worker stays happy).
+     */
+    think ()
+    {
+        if (this.isThinking || this.hasReacted)
+        {
+            return;
+        }
+        this.isThinking = true;
+        this.sprite.setTexture('worker-thinking');
+        this.thinkTimer = this.scene.time.delayedCall(THINK_MS, () => this.stopThinking());
+    }
+
+    /** Returns from the thinking pose to neutral (no-op if not thinking). */
+    stopThinking ()
+    {
+        if (!this.isThinking)
+        {
+            return;
+        }
+        this.isThinking = false;
+        if (this.thinkTimer)
+        {
+            this.thinkTimer.remove(false);
+            this.thinkTimer = undefined;
+        }
+        this.sprite.setTexture('worker-neutral');
+    }
+
+    /**
      * Switches to a reaction pose with a little pop (scales up then settles back), and stops
      * the idle bob so the character holds still in the reaction pose rather than still bobbing.
      *
-     * @param {'happy' | 'celebrate'} pose
+     * @param {'happy' | 'happy2' | 'celebrate'} pose
      */
     react (pose)
     {
+        // A reaction overrides any thinking in progress, and thinking never resumes after it.
+        this.hasReacted = true;
+        this.isThinking = false;
+        if (this.thinkTimer)
+        {
+            this.thinkTimer.remove(false);
+            this.thinkTimer = undefined;
+        }
         if (this.idleTween)
         {
             this.idleTween.stop();
