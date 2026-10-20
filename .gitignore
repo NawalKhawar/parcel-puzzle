@@ -72,3 +72,4 @@ coverage/
 # Context & Design Files (Local AI context only)
 /docs/
 
+*.zip
