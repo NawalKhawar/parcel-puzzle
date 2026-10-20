@@ -1,4 +1,4 @@
-import { getShapeBounds, getShapeName } from '../../core/Shape.js';
+import { getShapeBounds } from '../../core/Shape.js';
 import { UI_SCALE } from '../uiScale.js';
 
 /**
@@ -10,8 +10,8 @@ import { UI_SCALE } from '../uiScale.js';
  * pointer input, so the puzzle can't be touched underneath; the player never has to dismiss it.
  *
  * The popup shows each new shape using its art image (the same image as the matching piece in
- * the tray) with its name underneath. It holds no puzzle logic; PuzzleScene decides when to
- * show it.
+ * the tray), just the pieces themselves under the heading - no name label under each one. It
+ * holds no puzzle logic; PuzzleScene decides when to show it.
  */
 
 /** Timings in milliseconds. */
@@ -51,7 +51,7 @@ export function showNewPieceIntro(scene, shapeIds, onDone)
     const rowWidth = shapes.reduce((sum, shape) => sum + shape.bounds.cols * cell, 0) + (shapes.length - 1) * PREVIEW_GAP * S;
     const tallest = Math.max(...shapes.map((shape) => shape.bounds.rows)) * cell;
     const panelWidth = Math.max(380 * S, rowWidth + 120 * S);
-    const panelHeight = 96 * S + tallest + 70 * S;
+    const panelHeight = 96 * S + tallest + 40 * S;
 
     // Everything is a child of one container centred on (0, 0), so scaling the container
     // pops/shrinks the whole popup from its middle.
@@ -62,14 +62,14 @@ export function showNewPieceIntro(scene, shapeIds, onDone)
     container.add(
         scene.add
             .text(0, -panelHeight / 2 + 40 * S, shapeIds.length > 1 ? 'New pieces!' : 'New piece!', {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 34 * S,
                 color: '#3a362f',
             })
             .setOrigin(0.5)
     );
 
-    // The shapes, left to right, each with its name underneath.
+    // The shapes themselves, left to right - just the pieces, no name label under each one.
     let cursorX = -rowWidth / 2;
     const shapesTop = -panelHeight / 2 + 88 * S;
     for (const shape of shapes)
@@ -79,15 +79,6 @@ export function showNewPieceIntro(scene, shapeIds, onDone)
                 .image(cursorX, shapesTop, shape.id)
                 .setOrigin(0, 0)
                 .setDisplaySize(shape.bounds.cols * cell, shape.bounds.rows * cell)
-        );
-        container.add(
-            scene.add
-                .text(cursorX + (shape.bounds.cols * cell) / 2, shapesTop + tallest + 26 * S, getShapeName(shape.id), {
-                    fontFamily: 'Arial Black',
-                    fontSize: 18 * S,
-                    color: '#3a362f',
-                })
-                .setOrigin(0.5)
         );
         cursorX += shape.bounds.cols * cell + PREVIEW_GAP * S;
     }

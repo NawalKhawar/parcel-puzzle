@@ -14,7 +14,7 @@ export class GameOver extends Scene
         this.add.image(this.scale.width / 2, this.scale.height / 2, 'background').setAlpha(0.5);
 
         this.add.text(this.scale.width / 2, this.scale.height / 2, 'Game Over', {
-            fontFamily: 'Arial Black', fontSize: 64, color: '#ffffff',
+            fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 64, color: '#ffffff',
             stroke: '#000000', strokeThickness: 8,
             align: 'center'
         }).setOrigin(0.5);

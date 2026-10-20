@@ -8,6 +8,7 @@ import shapeLevelsRaw from '../../data/levels.shapes.json';
 import { GridView } from '../objects/GridView.js';
 import { PieceView } from '../objects/PieceView.js';
 import { showNewPieceIntro } from '../objects/NewPieceIntro.js';
+import { WorkerCharacter } from '../objects/WorkerCharacter.js';
 import { makePressable } from '../objects/pressFeedback.js';
 import { UI_SCALE } from '../uiScale.js';
 
@@ -102,7 +103,7 @@ const ART_SCALE = UI_SCALE / 2;
 const BELT_MAX_HEIGHT = 230 * UI_SCALE;
 /** The belt is pushed this far below the screen's bottom edge, so its lower rollers are cut off and
  *  it looks like it runs on past the edge of the screen. */
-const BELT_BOTTOM_CLIP = 22 * UI_SCALE;
+const BELT_BOTTOM_CLIP = 40 * UI_SCALE;
 const BELT_SURFACE_TOP = 0.05;
 const BELT_SURFACE_BOTTOM = 0.87;
 const BELT_SURFACE_CENTER = 0.46;
@@ -131,11 +132,12 @@ const TRAY_MAX_HEIGHT_FRACTION = 0.9;
  * opening is exactly the artwork's own 720x720, so nothing is stretched.
  */
 const TRUCK_MARGINS = { left: 96, right: 96, top: 96, bottom: 168 };
-/** How far the bottom of the truck (its wheels) tucks behind the belt's back rail. */
-const TRUCK_BELT_OVERLAP = 12 * UI_SCALE;
-/** The truck never gets closer than this to the top of the screen: if a board is so tall that the
- *  truck would, the cells shrink instead (see create()). Shorter trucks simply stand on the belt. */
-const TRUCK_TOP_MARGIN = 10 * UI_SCALE;
+/** The truck is centred vertically in the space between the top of the screen and the belt, so
+ *  small trucks float in the middle and big ones fill it. It keeps at least this much clear space
+ *  above the belt (under the wheels) and below the top of the screen; a board so tall that the
+ *  truck would not fit gets smaller cells instead (see create()). */
+const TRUCK_BELT_GAP = 28 * UI_SCALE;
+const TRUCK_TOP_MARGIN = 16 * UI_SCALE;
 
 /**
  * The soft shadow the bumper casts on the tops of the wheels, so they look tucked under the truck.
@@ -148,22 +150,97 @@ const WHEEL_SPANS = [{ fromLeft: 24, width: 72 }, { fromRight: 25, width: 72 }];
 const WHEEL_SHADOW_BANDS = [0.55, 0.38, 0.22, 0.1]; // opacity of each band, top to bottom
 const WHEEL_SHADOW_BAND_HEIGHT = 7; // art pixels per band
 
-/** Draw depths (higher is in front): the truck, then the belt, then everything else at 0 and up. */
+/**
+ * THE GROUND SHADOW: a single flat shape on the floor under and around the truck, so the truck
+ * looks like it's grounded on the warehouse floor rather than floating in front of the
+ * background - a plain shape at one opacity (not layered/blurred). It's a plain, clean TRAPEZOID
+ * (four straight sides - a flat top edge, a flat bottom edge, and two straight slanted sides; no
+ * extra bevelled corners), the shape a rectangle lying flat on the ground becomes once drawn in
+ * perspective: assets/background.png draws its floor that way (the grout lines converge upward,
+ * toward the garage door - the same treatment the apartment room's floor uses), so a shadow with
+ * straight, PARALLEL sides would sit at the wrong angle for it. Narrower at the top (nearer the
+ * vanishing point, by the wheels) and wider at the bottom (nearer the viewer) reads as a rectangle
+ * lying flat on that same floor, the way the truck's own tail lights and wheel track do.
+ */
+const TRUCK_SHADOW_TOP_WIDTH_FRACTION = 0.8; // relative to the truck's full art width, at the top edge
+const TRUCK_SHADOW_BOTTOM_WIDTH_FRACTION = 1.2; // relative to the truck's full art width, at the bottom edge
+const TRUCK_SHADOW_DEPTH_FRACTION = 0.3; // how far it reaches forward, relative to the truck's own width
+const TRUCK_SHADOW_ALPHA = 0.16;
+/** Pulls the shadow's top edge up from the truck's bottom, so it reaches roughly as high as the
+ *  tail lights rather than only the wheels - the truck's whole lower half then appears to sit
+ *  inside the shadow. The overlapped part is simply hidden behind the truck, drawn on top. */
+const TRUCK_SHADOW_Y_OVERLAP = 90 * ART_SCALE;
+
+/**
+ * THE TRUCK EXTRAS: separate images placed on the frame AFTER it has been stretched to the board
+ * (assets/side-light.png 128x448, handlebar-left/right.png 29x160, license-plate.png 256x106, all
+ * art pixels). They sit ON the frame's side pillars (centred in the 96 px side margins, which
+ * never stretch sideways), so they need no stretching: a light and a handlebar on each side, and a licence plate on the bumper that shows the truck's number
+ * (set in the game's font, Fredoka). Each *_SCALE is relative to the normal art scale, because
+ * the pieces were drawn larger than they should appear on the truck.
+ */
+const SIDE_LIGHT_SCALE = 0.4;
+const SIDE_LIGHT_CENTER = 0.8; // how far down the opening the light's centre sits (0 top, 1 bottom)
+/** On a compact (few-row) truck the opening isn't tall enough for a full-size light to sit clear
+ *  of the handlebar above it, so the light also shrinks with the opening - down to this fraction
+ *  of its normal size at most - rather than just being pushed as close to the handlebar as the
+ *  minimum gap allows. An opening this many rows tall (or taller) uses the light at full size. */
+const SIDE_LIGHT_MIN_SCALE_FRACTION = 0.55;
+const SIDE_LIGHT_FULL_SIZE_ROWS = 5;
+const HANDLEBAR_SCALE = 1;
+const HANDLEBAR_CENTER = 0.42; // how far down the opening the handlebar's centre sits
+const PLATE_SCALE = 0.75;
+const PLATE_FROM_BOTTOM = 115; // art px from the truck's bottom edge up to the plate's centre
+const PLATE_FONT_SIZE = 17 * UI_SCALE; // game px, at the plate's own scale
+const PLATE_TEXT_COLOR = '#5a4a3f';
+const EXTRAS_DEPTH = -18; // in front of the frame and the wheel shadow, behind the belt
+
+/** Draw depths (higher is in front): the background, then the truck, then the belt, then
+ *  everything else at 0 and up. */
+const BACKGROUND_DEPTH = -30;
 const TRUCK_DEPTH = -20;
 const BELT_DEPTH = -10;
 const PLACED_DEPTH = 10; // parcels on the board
+const CHARACTER_DEPTH = 15; // the worker character, standing just in front of everything so far
 const SHUTTER_DEPTH = 60; // covers the board, over the parcels placed on it
+const FLOATING_REWARD_DEPTH = 70; // the rising "+$X" text, above even the shutter
 const DRAG_DEPTH = 500; // the parcel being carried
 
-/** How long the shutter takes to roll down, and how long it rests before the overlay appears (ms). */
-const SHUTTER_CLOSE_MS = 200;
-const SHUTTER_HOLD_MS = 60;
+/** How long the shutter takes to roll down, and how long the closed truck rests (after its bob)
+ *  before the next truck starts or the overlay appears (ms). */
+const SHUTTER_CLOSE_MS = 340;
+const SHUTTER_HOLD_MS = 520;
+/** The dust puff when the shutter lands: how many puffs at each wheel and at each bottom corner of
+ *  the opening, how long each lives (ms), and the pale colour of the dust. */
+const DUST_WHEEL_COUNT = 9;
+const DUST_CORNER_COUNT = 5;
+const DUST_LIFESPAN_MS = 600;
+const DUST_COLOR = 0xcfc3a8;
 /** The little bounce the truck gives when the shutter lands: total time, and how far it dips (px). */
 const TRUCK_BOB_MS = 260;
 const TRUCK_BOB_PX = 5 * UI_SCALE;
 
 /** Size (design pixels) of the square HUD icon buttons (assets/*-icon.png are 96x96, drawn at half). */
 const HUD_BUTTON_SIZE = 48 * UI_SCALE;
+
+/**
+ * THE WORKER CHARACTER (see objects/WorkerCharacter.js): stands in the left margin, at a fixed
+ * position and size regardless of the truck's own width (an earlier pass made both adapt to the
+ * truck - dropped again, so the worker no longer visibly resizes/shuffles between puzzles).
+ *
+ * Its vertical position is NOT tied to the truck either (the truck's own height varies board to
+ * board, see the "Centred in the free space" comment above) - the worker always stands at the
+ * same fixed height, flush with the floor every truck's wheels rest at when there's room to (see
+ * freeBottom below), so it never visibly shifts up or down between puzzles the way the truck does.
+ */
+const CHARACTER_X = 240 * UI_SCALE;
+const CHARACTER_SCALE = 0.87; // on top of UI_SCALE - see WorkerCharacter's own scale doc
+
+/** The "+$X" that floats up and fades when a truck is solved: how far it rises and how long each
+ *  stage takes (ms) - fades in, holds at full opacity, then fades out, while rising the whole time. */
+const FLOATING_REWARD_RISE = 70 * UI_SCALE;
+const FLOATING_REWARD_FADE_MS = 350;
+const FLOATING_REWARD_HOLD_MS = 650;
 
 /** Coins awarded for completing a truck whose data doesn't set its own `reward` (see
  *  levels.schema.md) — every puzzle actually shipped in levels.shapes.json sets one explicitly,
@@ -196,6 +273,10 @@ export class PuzzleScene extends Scene
         {
             this.registry.set('dayTrucksCompleted', 0);
             this.registry.set('dayEarned', 0);
+            // Earnings so far today, broken down by truck difficulty - e.g.
+            // { easy: { count: 2, earned: 20 }, hard: { count: 1, earned: 35 } } - shown as a
+            // breakdown on DayCompleteScene. Only difficulties actually played appear as keys.
+            this.registry.set('dayByDifficulty', {});
         }
 
         this.hasWon = false;
@@ -212,7 +293,15 @@ export class PuzzleScene extends Scene
 
     create ()
     {
-        this.cameras.main.setBackgroundColor(0xf5ead6);
+        // Fallback fill, in case the background image is ever missing or doesn't quite cover the
+        // canvas (e.g. an unusual aspect ratio under Scale.FIT) - picked to match the floor colour
+        // in assets/background.png so a sliver of it showing through is not jarring.
+        this.cameras.main.setBackgroundColor(0xe8d9c3);
+
+        // The warehouse scene behind the truck (assets/background.png, 2560x1440 art pixels - full
+        // screen at the same 2x-design scale as the rest of the art). Drawn first so everything
+        // else sits on top of it.
+        this.add.image(0, 0, 'warehouse-background').setOrigin(0, 0).setScale(ART_SCALE).setDepth(BACKGROUND_DEPTH);
 
         // loadShapeLevels throws loudly on any schema violation, so broken level data
         // fails fast and visibly here rather than producing a silently-wrong board.
@@ -239,22 +328,52 @@ export class PuzzleScene extends Scene
         // BOARD_MAX_HEIGHT, and further if the truck (board + its fixed frame) would not fit
         // between the top margin and the belt.
         const frameHeight = (TRUCK_MARGINS.top + TRUCK_MARGINS.bottom) * ART_SCALE;
-        const roomForBoard = beltTop + TRUCK_BELT_OVERLAP - TRUCK_TOP_MARGIN - frameHeight;
+        const roomForBoard = beltTop - TRUCK_BELT_GAP - TRUCK_TOP_MARGIN - frameHeight;
         this.cellSize = Math.min(MAX_CELL_SIZE, BOARD_MAX_HEIGHT / truck.rows, roomForBoard / truck.rows);
 
         const boardPixelWidth = truck.cols * this.cellSize;
         const boardPixelHeight = truck.rows * this.cellSize;
 
         // The truck, stretched to fit this board. Its size in art pixels is the board (converted
-        // from game pixels to art pixels) plus the fixed margins; it stands with its wheels just
-        // behind the belt, and the board goes where the grey opening is.
+        // from game pixels to art pixels) plus the fixed margins; it floats clear of the belt, centred
+        // above it, and the board goes where the grey opening is.
         const truckArtWidth = boardPixelWidth / ART_SCALE + TRUCK_MARGINS.left + TRUCK_MARGINS.right;
         const truckArtHeight = boardPixelHeight / ART_SCALE + TRUCK_MARGINS.top + TRUCK_MARGINS.bottom;
-        // Always standing on the belt, so each truck grows upward into the empty space above it;
-        // the cell-size limit above guarantees it never reaches the top margin.
-        const truckTop = beltTop + TRUCK_BELT_OVERLAP - truckArtHeight * ART_SCALE;
+        // Centred in the free space between the top margin and the belt gap. The cell-size limit
+        // above guarantees the truck is never taller than that space.
+        const freeTop = TRUCK_TOP_MARGIN;
+        const freeBottom = beltTop - TRUCK_BELT_GAP;
+        const truckTop = freeTop + (freeBottom - freeTop - truckArtHeight * ART_SCALE) / 2;
         const boardX = (this.scale.width - boardPixelWidth) / 2;
         const boardY = truckTop + TRUCK_MARGINS.top * ART_SCALE;
+
+        // The ground shadow, drawn before (so: behind) the truck itself. Centred under the truck
+        // and sized off the same truckArtWidth used for the frame, so it always matches and grows
+        // with it. Its top edge reaches up close to the tail lights, so the truck's lower half
+        // sits inside it, then it stretches on down towards the viewer, flaring outward as it
+        // goes (see THE GROUND SHADOW) to sit at the same angle as the floor beneath it.
+        const truckWidthPx = truckArtWidth * ART_SCALE; // the truck's own width, used for every *_FRACTION above
+        const shadowCenterX = boardX - TRUCK_MARGINS.left * ART_SCALE + truckWidthPx / 2;
+        const shadowTop = truckTop + truckArtHeight * ART_SCALE - TRUCK_SHADOW_Y_OVERLAP;
+        const shadowHeight = truckWidthPx * TRUCK_SHADOW_DEPTH_FRACTION;
+        const shadowBottom = shadowTop + shadowHeight;
+        const topHalfWidth = (truckWidthPx * TRUCK_SHADOW_TOP_WIDTH_FRACTION) / 2;
+        const bottomHalfWidth = (truckWidthPx * TRUCK_SHADOW_BOTTOM_WIDTH_FRACTION) / 2;
+        this.truckShadow = this.add.graphics().setDepth(BACKGROUND_DEPTH + 1);
+        this.truckShadow.fillStyle(0x000000, TRUCK_SHADOW_ALPHA);
+        // A plain four-point trapezoid: a flat top edge, a flat bottom edge, and two straight
+        // slanted sides joining them - no extra corner cuts, so it reads as a clean rectangle
+        // laid flat on a floor drawn in perspective, not an odd many-sided shape.
+        this.truckShadow.fillPoints(
+            [
+                { x: shadowCenterX - topHalfWidth, y: shadowTop },
+                { x: shadowCenterX + topHalfWidth, y: shadowTop },
+                { x: shadowCenterX + bottomHalfWidth, y: shadowBottom },
+                { x: shadowCenterX - bottomHalfWidth, y: shadowBottom },
+            ],
+            true
+        );
+
         this.truckFrame = this.add
             .nineslice(
                 boardX - TRUCK_MARGINS.left * ART_SCALE,
@@ -293,6 +412,26 @@ export class PuzzleScene extends Scene
             });
         }
 
+        // Where the dust puffs when the truck closes: the bottom of each wheel.
+        const truckBottomY = truckTop + truckArtHeight * ART_SCALE;
+        this.wheelDustPoints = WHEEL_SPANS.map((wheel) => ({
+            x: wheel.fromLeft !== undefined
+                ? truckLeft + (wheel.fromLeft + wheel.width / 2) * ART_SCALE
+                : truckRight - (wheel.fromRight + wheel.width / 2) * ART_SCALE,
+            y: truckBottomY,
+        }));
+
+        this.truckExtras = this.addTruckExtras(truckLeft, truckRight, truckBottomY, boardY, boardPixelHeight);
+
+        // The worker, at a fixed position and size (see THE WORKER CHARACTER above) - its feet
+        // rest at the same fixed height every truck (not truckBottomY - that moves with each
+        // truck's own vertical centring, see freeBottom above), idly bobbing in its neutral pose
+        // until handleWin() switches it to a reaction pose once this truck is solved.
+        this.worker = new WorkerCharacter(this, CHARACTER_X, freeBottom, {
+            scale: CHARACTER_SCALE,
+            depth: CHARACTER_DEPTH,
+        });
+
         this.gridView = new GridView(this, boardX, boardY, this.grid, this.cellSize);
 
         // "Level N · Truck k/total" header, top right (the truck can reach the top-centre of
@@ -302,7 +441,7 @@ export class PuzzleScene extends Scene
         const trucksTotal = this.levelData.trucks.length;
         this.add
             .text(this.scale.width - 24 * UI_SCALE, 28 * UI_SCALE, `Level ${this.levelIndex + 1}  ·  Truck ${this.truckIndex + 1}/${trucksTotal}  ·  ${truck.difficulty ?? ''}`, {
-                fontFamily: 'Arial',
+                fontFamily: 'Fredoka, Arial', fontStyle: '400',
                 fontSize: 20 * UI_SCALE,
                 color: '#3a362f',
             })
@@ -331,6 +470,12 @@ export class PuzzleScene extends Scene
      * as long as the game is open and is NOT reset by starting a new game (otherwise every new
      * game would begin with the same puzzles).
      *
+     * The rotation does not always begin at the pool's first puzzle: each time the game is opened a
+     * random starting offset is chosen ('poolOffset' in the registry) and added to every level's
+     * play count. Without it a player who only ever plays each level once would see the first puzzle
+     * of every pool, every time, and the other four would never appear. The rotation order itself
+     * stays the same, so replays within a session still never repeat until the pool has been used up.
+     *
      * The picks are then remembered in the registry for the rest of the day: every truck is a
      * fresh PuzzleScene instance, and picking again would count another play and hand out
      * different puzzles for the same truck. If the stored picks belong to another day (e.g. a
@@ -350,7 +495,16 @@ export class PuzzleScene extends Scene
         const playNumber = playCounts[this.levelIndex] ?? 0;
         this.registry.set('levelPlayCounts', { ...playCounts, [this.levelIndex]: playNumber + 1 });
 
-        const puzzles = pickDayPuzzles(this.levelData, playNumber);
+        // Random start within the pools, chosen once per session (see above). pickDayPuzzles wraps
+        // the number around each pool, so any whole number is fine.
+        let poolOffset = this.registry.get('poolOffset');
+        if (poolOffset === undefined)
+        {
+            poolOffset = Math.floor(Math.random() * 1000);
+            this.registry.set('poolOffset', poolOffset);
+        }
+
+        const puzzles = pickDayPuzzles(this.levelData, poolOffset + playNumber);
         this.registry.set('dayPuzzles', { levelIndex: this.levelIndex, puzzles });
         return puzzles;
     }
@@ -427,7 +581,7 @@ export class PuzzleScene extends Scene
         // safety net for an unset registry key).
         const totalEarned = this.registry.get('totalEarned') ?? 0;
         this.coinText = this.add.text(16 * UI_SCALE, 16 * UI_SCALE, `$${totalEarned}`, {
-            fontFamily: 'Arial Black',
+            fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
             fontSize: 18 * UI_SCALE,
             color: '#3a362f',
             backgroundColor: '#f6dca0',
@@ -789,7 +943,7 @@ export class PuzzleScene extends Scene
                 this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x000000, 0.45),
                 this.add
                     .text(centerX, centerY, 'Paused', {
-                        fontFamily: 'Arial Black',
+                        fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                         fontSize: 40 * UI_SCALE,
                         color: '#ffffff',
                         stroke: '#3a362f',
@@ -833,6 +987,19 @@ export class PuzzleScene extends Scene
         let totalEarned = (this.registry.get('totalEarned') ?? 0) + reward;
         this.registry.set('totalEarned', totalEarned);
 
+        // Fold this truck's reward into today's running breakdown by difficulty (see init()).
+        const byDifficulty = { ...(this.registry.get('dayByDifficulty') ?? {}) };
+        const difficultyKey = this.truck.difficulty;
+        const soFar = byDifficulty[difficultyKey] ?? { count: 0, earned: 0 };
+        byDifficulty[difficultyKey] = { count: soFar.count + 1, earned: soFar.earned + reward };
+        this.registry.set('dayByDifficulty', byDifficulty);
+
+        // The worker celebrates harder for a hard truck than for an easy/medium one, and the
+        // reward floats up over the board - both fire right away, not after the shutter closes,
+        // so the player sees them as part of "I just solved this" rather than the truck leaving.
+        this.worker.react(difficultyKey === 'hard' ? 'celebrate' : 'happy');
+        this.showFloatingReward(reward);
+
         const trucksTotal = this.levelData.trucks.length;
         const isLastTruck = this.truckIndex === trucksTotal - 1;
 
@@ -864,6 +1031,7 @@ export class PuzzleScene extends Scene
                     levelIndex: this.levelIndex,
                     trucksCompleted,
                     truckEarnings: dayEarned,
+                    byDifficulty,
                     bonuses,
                     earned: dayEarned + bonusTotal,
                     isLastLevel: this.levelIndex === this.levels.length - 1,
@@ -874,6 +1042,51 @@ export class PuzzleScene extends Scene
                 // Straight on to the next truck of the day - no overlay in between.
                 this.scene.start('PuzzleScene', { levelIndex: this.levelIndex, truckIndex: this.truckIndex + 1 });
             }
+        });
+    }
+
+    /**
+     * The "+$X" that floats up from the middle of the board and fades away, shown the instant a
+     * truck is solved (see handleWin()). It rises steadily for its whole lifetime while its
+     * opacity fades in, holds, then fades out again - two separate tweens on the same text object,
+     * since a single tween's yoyo would also send the rise back downward, which isn't wanted here.
+     * Drawn above even the shutter (FLOATING_REWARD_DEPTH), so it stays visible as the truck closes.
+     *
+     * @param {number} amount - the coins this truck paid, shown as "+$amount".
+     */
+    showFloatingReward (amount)
+    {
+        const x = this.gridView.x + this.gridView.pixelWidth / 2;
+        const y = this.gridView.y + this.gridView.pixelHeight / 2;
+
+        const text = this.add
+            .text(x, y, `+$${amount}`, {
+                fontFamily: 'Fredoka, Arial Black',
+                fontStyle: '600',
+                fontSize: 40 * UI_SCALE,
+                color: '#3f7d4e',
+                stroke: '#faf3e4',
+                strokeThickness: 6 * UI_SCALE,
+            })
+            .setOrigin(0.5)
+            .setAlpha(0)
+            .setDepth(FLOATING_REWARD_DEPTH);
+
+        const totalMs = FLOATING_REWARD_FADE_MS * 2 + FLOATING_REWARD_HOLD_MS;
+        this.tweens.add({
+            targets: text,
+            y: y - FLOATING_REWARD_RISE,
+            duration: totalMs,
+            ease: 'Sine.easeOut',
+        });
+        this.tweens.add({
+            targets: text,
+            alpha: 1,
+            duration: FLOATING_REWARD_FADE_MS,
+            ease: 'Sine.easeOut',
+            yoyo: true,
+            hold: FLOATING_REWARD_HOLD_MS,
+            onComplete: () => text.destroy(),
         });
     }
 
@@ -934,9 +1147,144 @@ export class PuzzleScene extends Scene
             onComplete: () => {
                 place(endY);
                 this.bobTruck();
+                this.puffDust();
                 this.time.delayedCall(TRUCK_BOB_MS + SHUTTER_HOLD_MS, onDone);
             },
         });
+    }
+
+    /**
+     * Adds the truck's side lights, handlebars and licence plate (see THE TRUCK EXTRAS) around the
+     * already-stretched frame, and returns them so they can move with the truck.
+     *
+     * @param {number} left - x of the frame's left edge.
+     * @param {number} right - x of the frame's right edge.
+     * @param {number} bottom - y of the frame's bottom edge (under the wheels).
+     * @param {number} openingY - y of the top of the board's opening.
+     * @param {number} openingHeight - height of the board's opening.
+     * @returns {Phaser.GameObjects.GameObject[]} everything that was added.
+     */
+    addTruckExtras (left, right, bottom, openingY, openingHeight)
+    {
+        const extras = [];
+        const add = (object) => {
+            object.setDepth(EXTRAS_DEPTH);
+            extras.push(object);
+            return object;
+        };
+        // The side pillars are TRUCK_MARGINS.left / .right wide; things on them are centred in them.
+        const pillarLeftX = left + (TRUCK_MARGINS.left / 2) * ART_SCALE;
+        const pillarRightX = right - (TRUCK_MARGINS.right / 2) * ART_SCALE;
+
+        // The handlebar and the light below it are laid out as a PAIR, not independently, because
+        // on a short (few-row) truck the opening isn't tall enough for both to sit at their
+        // preferred fractions (0.42 and 0.8) without touching - see the screenshot that prompted
+        // this. So: start from their preferred positions, then if they'd be closer than GAP apart,
+        // push them apart (equally, around their shared midpoint) until there's a clear gap, and
+        // finally slide the whole pair up/down together - keeping that gap - so neither pokes
+        // outside the opening. Only on a truck too short for both even edge-to-edge (rare, smaller
+        // than two cells) do they end up touching again, which is the best that fits.
+        // Shrink the light with how short the opening is (in cells, not raw pixels, since a short
+        // truck can still have full-size cells - see MAX_CELL_SIZE / BOARD_MAX_HEIGHT above).
+        const openingRows = openingHeight / this.cellSize;
+        const lightShrink = Math.max(SIDE_LIGHT_MIN_SCALE_FRACTION, Math.min(1, openingRows / SIDE_LIGHT_FULL_SIZE_ROWS));
+        const lightScale = ART_SCALE * SIDE_LIGHT_SCALE * lightShrink;
+        const barScale = ART_SCALE * HANDLEBAR_SCALE;
+        const lightLeft = add(this.add.image(pillarLeftX, 0, 'side-light').setScale(lightScale));
+        const lightRight = add(this.add.image(pillarRightX, 0, 'side-light').setScale(lightScale).setFlipX(true));
+        const barLeft = add(this.add.image(pillarLeftX, 0, 'handlebar-left').setScale(barScale));
+        const barRight = add(this.add.image(pillarRightX, 0, 'handlebar-right').setScale(barScale));
+
+        const GAP = 6 * ART_SCALE; // minimum clear space kept between the handlebar and the light
+        const halfBar = barLeft.displayHeight / 2;
+        const halfLight = lightLeft.displayHeight / 2;
+        const required = halfBar + GAP + halfLight; // minimum centre-to-centre distance
+
+        let barY = openingY + openingHeight * HANDLEBAR_CENTER;
+        let lightY = openingY + openingHeight * SIDE_LIGHT_CENTER;
+        if (lightY - barY < required)
+        {
+            const mid = (barY + lightY) / 2;
+            barY = mid - required / 2;
+            lightY = mid + required / 2;
+        }
+        // Slide the pair together (not independently, or the gap above would be undone) to stay
+        // inside the opening's top and bottom.
+        if (barY - halfBar < openingY)
+        {
+            const shift = openingY - (barY - halfBar);
+            barY += shift;
+            lightY += shift;
+        }
+        if (lightY + halfLight > openingY + openingHeight)
+        {
+            const shift = lightY + halfLight - (openingY + openingHeight);
+            barY -= shift;
+            lightY -= shift;
+        }
+
+        barLeft.setY(barY);
+        barRight.setY(barY);
+        lightLeft.setY(lightY);
+        lightRight.setY(lightY);
+
+        // Licence plate on the bumper, centred, with the truck's number on it ("TRUCK 03").
+        const plateX = (left + right) / 2;
+        const plateY = bottom - PLATE_FROM_BOTTOM * ART_SCALE;
+        add(this.add.image(plateX, plateY, 'license-plate').setScale(ART_SCALE * PLATE_SCALE));
+        add(
+            this.add
+                .text(plateX, plateY, `TRUCK ${String(this.truckIndex + 1).padStart(2, '0')}`, {
+                    fontFamily: 'Fredoka, Arial',
+                    fontStyle: '600',
+                    fontSize: PLATE_FONT_SIZE,
+                    color: PLATE_TEXT_COLOR,
+                })
+                .setOrigin(0.5)
+        );
+        return extras;
+    }
+
+    /**
+     * A little cloud of dust thrown up when the shutter lands: a burst at the base of each wheel and
+     * a smaller one at each bottom corner of the opening. The puffs are soft round dots that drift
+     * outwards and up, grow a little and fade. The dot texture is drawn once and kept.
+     */
+    puffDust ()
+    {
+        if (!this.textures.exists('dust'))
+        {
+            const dot = this.make.graphics({ x: 0, y: 0 }, false);
+            dot.fillStyle(0xffffff, 1);
+            dot.fillCircle(16, 16, 16);
+            dot.generateTexture('dust', 32, 32);
+            dot.destroy();
+        }
+
+        const burst = (x, y, count, spread) => {
+            const emitter = this.add.particles(x, y, 'dust', {
+                emitting: false,
+                lifespan: DUST_LIFESPAN_MS,
+                speed: { min: 20 * UI_SCALE, max: 70 * UI_SCALE * spread },
+                angle: { min: 180, max: 360 }, // fan out sideways and up
+                gravityY: -20 * UI_SCALE,
+                scale: { start: 0.5 * UI_SCALE * spread, end: 1.2 * UI_SCALE * spread },
+                alpha: { start: 0.7, end: 0 },
+                tint: DUST_COLOR,
+            });
+            emitter.setDepth(EXTRAS_DEPTH + 1);
+            emitter.explode(count);
+            // Remove the emitter once its last puff has faded.
+            this.time.delayedCall(DUST_LIFESPAN_MS + 100, () => emitter.destroy());
+        };
+
+        for (const point of this.wheelDustPoints)
+        {
+            burst(point.x, point.y, DUST_WHEEL_COUNT, 1);
+        }
+        const bottom = this.gridView.y + this.gridView.pixelHeight;
+        burst(this.gridView.x, bottom, DUST_CORNER_COUNT, 0.6);
+        burst(this.gridView.x + this.gridView.pixelWidth, bottom, DUST_CORNER_COUNT, 0.6);
     }
 
     /**
@@ -946,7 +1294,7 @@ export class PuzzleScene extends Scene
      */
     bobTruck ()
     {
-        const movers = [this.truckFrame, this.wheelShadow, this.shutter, this.gridView.container, ...this.pieceViews.map((v) => v.container ?? v)];
+        const movers = [this.truckFrame, this.wheelShadow, this.truckShadow, ...this.truckExtras, this.shutter, this.gridView.container, ...this.pieceViews.map((v) => v.container ?? v)];
         const starts = movers.map((m) => ({ x: m.x, y: m.y }));
         this.tweens.addCounter({
             from: 0,

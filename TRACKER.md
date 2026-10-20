@@ -101,7 +101,7 @@ Log.
   - [x] Workday/shift-complete screen (`ShiftCompleteScene.js`)
   - [x] Multi-level sequential flow (all of `levels.json` = one shift)
 
-- [x] **Milestones 9.1-9.17 — Post-M9 additions** (done 2026-10-15/20; added to ROADMAP.md)
+- [x] **Milestones 9.1-9.19 — Post-M9 additions** (done 2026-10-15/20; added to ROADMAP.md)
   - [x] 9.1 Title screen, day flow & persistent pay count
   - [x] 9.2 30 generated levels (3 / 4 / 5 / 6 trucks per day)
   - [x] 9.3 Portrait / square boards
@@ -119,6 +119,8 @@ Log.
   - [x] 9.15 Truck frame + shutter, dark belt with smaller overlapping parcels, button feedback, Cozy Cargo
   - [x] 9.16 Full-width belt, faster shutter + truck bob, straight to the next truck (WinScene removed)
   - [x] 9.17 L pieces at level 4, then every 3 levels (7, 10, 13, 16)
+  - [x] 9.18 Truck extras (side lights, handlebars, licence plate with truck number), Fredoka font
+  - [x] 9.19 Worker character (idle bob + win reactions), day-complete difficulty breakdown, floating +$X reward, tab title/favicon
 
 - [ ] **Milestone 10 — Visual Polish & Audio**
   - [ ] Sprite-based rendering
@@ -867,3 +869,74 @@ Log.
   (800 puzzles, all solvable per `validate-levels.js --shapes`; `levels.json` byte-identical).
   Tests and docs updated; the new-piece popup needed no code change. Because the puzzles were
   regenerated, every pool is different from before.
+- 2026-10-21 — **Truck extras + Fredoka** (Milestone 9.18). `side-light` 128x448, `handlebar-*` 29x160,
+  `license-plate` 256x106 (art px) are placed after the 9-slice by `addTruckExtras`: lights shown
+  at 40% of normal art scale (they are drawn large), handlebars and plate at 100% / 75%. Plate text is
+  "TRUCK 0k" in Fredoka 600 (new dev dependency `@fontsource/fredoka`, loaded in Preloader). Fredoka
+  is only used on the plate so far; the other text is still Arial / Arial Black.
+- 2026-10-21 — **9.18 adjustment:** side lights and handlebars now sit centred on the frame's side pillars (inside the frame, not hanging off its edges). The truck now stands 10 px clear of the belt's top edge (`TRUCK_BELT_GAP`, replaces the old 12 px tuck-behind overlap), so the board-height cap is unchanged at 360.
+- 2026-10-21 — **Truck positioning:** trucks are now centred vertically in the free space between the top of the screen (16 px margin) and the belt (28 px clear under the wheels), instead of standing near the belt. A board too tall for that space gets smaller cells (e.g. 5x7 -> ~56 px cells). Checked 2x4, 3x3, 5x7 in the browser.
+- 2026-10-21 — **Pool variety:** the 5-puzzle pools were only rotated on replays, and a normal run plays each level once, so players always saw puzzle 1 of every pool. `getDayPuzzles()` now adds a random per-session start offset (registry `poolOffset`) to each level's play count. Six fresh sessions started level 1 truck 1 with p5, p2, p4, p1, p3, p5.
+- 2026-10-21 — **Shutter feel:** shutter descent slowed to 340 ms (was 200), rest after the bob before the next truck / day pop-up raised to 520 ms (was 60), and a dust puff (soft round particles, Phaser particle emitter, texture 'dust' generated in code) bursts at each wheel base and each bottom corner of the opening when the shutter lands. Constants `SHUTTER_*` and `DUST_*` in PuzzleScene.
+- 2026-10-21 — **Ambient sparkles:** small 4-point stars drift and twinkle in the empty margins on either side of the truck (new texture 'sparkle-star', drawn once in code). Two particle emitters, one per side, confined to a zone clear of the HUD, header and belt; spawn rate scales with the margin's area so a wide margin doesn't look emptier than a narrow one. Constants `SPARKLE_*` in PuzzleScene. Verified in headless Chromium (no console errors) and by eye in a screenshot.
+- 2026-10-21 — **Reverted the ambient sparkles** (removed SPARKLE_* constants, addAmbientSparkles(), the sparkle-star texture and the call site) - not kept. Belt pushed further below the screen edge: BELT_BOTTOM_CLIP 22 -> 40px, giving trucks more vertical room to grow into on tall boards.
+- 2026-10-21 — **Background art added** (assets/background.png, 2560x1440, drawn first in create() at a new BACKGROUND_DEPTH below the truck/belt). Hit a key collision: Boot.js's stock template already loads public/assets/bg.png under the texture key 'background', so the new art was silently losing that race (Phaser kept the 1024x768 template placeholder - a flat blue/cyan gradient, visible as a wrong-colored block in the corner). Fixed by loading the new asset under 'warehouse-background' instead (Preloader.js), leaving the untouched template leftovers (Boot.js, bg.png, Game.js, GameOver.js) alone. Checked on the 2x4 and the tallest 5x7 truck in the browser.
+- 2026-10-21 — **Fixed overlapping truck extras on compact boards:** the handlebar (0.42 of the opening's height) and the side light (0.8) were each clamped independently to stay inside a short opening, so on a 3x3 or smaller board they landed on top of each other. addTruckExtras now lays them out as a pair: computes both preferred positions, pushes them apart to a minimum 6px gap if needed (around their shared midpoint), then slides the pair together to stay inside the opening. Verified on a 3x3 board (level 1 truck 2) in the browser - no more overlap.
+- 2026-10-21 — **Side lights now shrink on compact trucks too** (not just get pushed as close to the handlebar as the minimum gap allows). Scale factor based on the opening's height in rows: full size at 5 rows or more, shrinking linearly down to 55% of normal at the shortest boards (SIDE_LIGHT_MIN_SCALE_FRACTION / SIDE_LIGHT_FULL_SIZE_ROWS). Checked a 3x3 (small, clear gap under the handlebar) and a 5-row truck (full size, as before).
+- 2026-10-21 — **Ground shadow added under the truck** (TRUCK SHADOW section, PuzzleScene): a soft smudge on the floor under the wheels, three overlapping semi-transparent ellipses (Graphics fillEllipse, since there's no native blur) fading outward, centred and sized off the same truckArtWidth/Height as the frame so it always matches the truck - including moving with it on resize and on the landing bob. Checked on a 2x4 and a 5-row truck.
+- 2026-10-21 — **Ground shadow reworked** per feedback: replaced the layered-ellipse soft shadow with a single flat rounded rectangle at one opacity (TRUCK_SHADOW_ALPHA 0.16), flush with the bottom of the wheels and stretching down/forward from there rather than straddling that line - matching the mockup's look of a shadow cast toward the viewer. New constants TRUCK_SHADOW_DEPTH_FRACTION (how far it reaches) and TRUCK_SHADOW_CORNER_RADIUS_FRACTION; TRUCK_SHADOW_LAYERS/HEIGHT_RATIO/Y_OFFSET removed. Checked on a 2x4 and a 5x6 truck.
+- 2026-10-21 — **Moved the ground shadow under the truck** per feedback: it previously started exactly flush with the frame's bottom edge, which - because of the small transition at the wheel's own edge - still read as floating a few px below the wheels. Pulled its top edge up by 16px (new TRUCK_SHADOW_Y_OVERLAP) to overlap the wheels slightly (the overlap is hidden behind them, drawn on top), so it now reads as emerging from under the truck rather than sitting in a gap behind it. Checked on a 2x4 and a 5x6 truck.
+- 2026-10-21 — **Ground shadow enlarged** per the marked-up mockup: now wider than the truck itself (bulges past both side pillars, WIDTH_FRACTION 0.82 -> 1.12), reaches up to about tail-light height instead of just the wheels (Y_OVERLAP 16px -> 90 art px), and extends further down toward the viewer (DEPTH_FRACTION 0.22 -> 0.5, now relative to the truck's own width rather than the shadow's wider width, so widening it didn't also balloon its depth). Checked on a 2x4 and a 5x6 truck.
+- 2026-10-21 — **Shortened the ground shadow:** it was reaching the belt on some trucks. TRUCK_SHADOW_DEPTH_FRACTION 0.5 -> 0.3, so it stays a compact rounded rectangle close around the truck, extended only slightly back rather than stretching the full way to the belt. Checked on a 2x4 and the tallest 5x7 truck.
+- 2026-10-21 — **Ground shadow now a trapezoid, matching the floor's perspective:** assets/background.png draws the floor in one-point perspective (converging toward the garage door), so a shadow with straight parallel sides sat at the wrong angle. Narrower at the top (TRUCK_SHADOW_TOP_WIDTH_FRACTION 0.8) and wider at the bottom (TRUCK_SHADOW_BOTTOM_WIDTH_FRACTION 1.2, both relative to the truck's width), corners cut at a bevel (no native polygon rounding in Graphics; TRUCK_SHADOW_CORNER_RADIUS_FRACTION replaced by TRUCK_SHADOW_BEVEL_FRACTION). Drawn with fillPoints instead of fillRoundedRect. Checked on a 2x4 and a 5x6 truck.
+- 2026-10-21 — **Simplified the ground shadow to a clean 4-point trapezoid** per feedback: the bevelled-corner version (8 points) read as an irregular shape, not a rectangle in perspective. Dropped TRUCK_SHADOW_BEVEL_FRACTION and the corner cuts; it's now just a flat top edge, a flat bottom edge and two straight slanted sides - the shape a rectangle on the ground becomes once drawn in the same one-point perspective as the floor (and the apartment room). Checked in the browser.
+- 2026-10-21 — **New-piece popup simplified:** removed the shape name label under each piece (e.g. 'L-piece', 'Corner') per feedback - now just the piece art under the 'New piece(s)!' heading. Panel height shrunk to match (no label row). getShapeName import dropped from NewPieceIntro.js (still used elsewhere: Shape.js, ShapeNames.test.js). Checked level 4's intro (tri_l + l4) in the browser.
+- 2026-10-22 — **Title screen art + tab metadata.** TitleScene now shows assets/title-bg.png full-screen (the 'Cozy Couriers' logo and two characters are baked into the art, so the separate text title was removed) with the Start Packing button placed in the open floor gap between the characters (BUTTON_X/Y_FRACTION, measured against that gap - re-measure if title-bg.png is replaced). The new start-packing.png button art re-measured for its clickable pill rect (20,132,2006,496 in its own 2048x768 pixels, alpha>220 threshold). index.html <title> changed from the stock 'Phaser - Template' to 'Cozy Couriers'; public/favicon.png replaced (was the stock Phaser logo) with a 64x64 export of assets/dot.png (the single-box piece art), generated in-browser via canvas since no image library is installed. Verified in headless Chromium: title screen renders, the button's click still starts PuzzleScene, and the tab title reads 'Cozy Couriers'.
+- 2026-10-22 — **Worker character, difficulty breakdown, floating reward, tab metadata**
+  (Milestone 9.19).
+  - New `objects/WorkerCharacter.js`: three poses (worker-neutral/happy/celebrate.png, 160x120 art
+    px each), neutral idles with an endless Sine.easeInOut yoyo bob, `react(pose)` swaps texture
+    with a Back.easeOut pop and stops the bob. Stands at CHARACTER_X in PuzzleScene, feet on
+    `truckBottomY` (the same floor line the ground shadow uses).
+  - `handleWin()` now also: tracks `dayByDifficulty` in the registry (reset at truck 0 alongside
+    `dayEarned`/`dayTrucksCompleted`), calls `worker.react('celebrate')` for a hard truck or
+    `'happy'` otherwise, and calls the new `showFloatingReward(reward)`.
+  - `showFloatingReward`: a "+$X" text, depth above even the shutter, rising via one tween while a
+    second tween fades it in/hold/out (alpha + `hold`), so the rise doesn't reverse with the fade.
+  - DayCompleteScene's rows now include one line per difficulty played (easy/medium/hard order),
+    replacing the old single "Truck earnings" line; verified against level 1's known economy
+    (3 easy trucks -> "3 Easy trucks  $30", "First day bonus  +$10", "Total earned today  $40").
+  - TitleScene rebuilt around assets/title-bg.png (full-screen, the "Cozy Couriers" logo baked in,
+    so the old separate text title was removed) with the Start Packing button placed in the art's
+    open floor gap (BUTTON_X/Y_FRACTION, re-measured for the new start-packing.png art too).
+    scripts/screenshot.js's click position updated to match.
+  - index.html `<title>` "Phaser - Template" -> "Cozy Couriers"; public/favicon.ico (replacing
+    favicon.png) is the supplied cozy-couriers-favicon.ico.
+  - **Debugging note for future me:** chased a false "DayCompleteScene never launches" bug for a
+    while - it was a headless-Chromium artifact (an uninterrupted `waitForTimeout` throttles
+    requestAnimationFrame, so Phaser's Clock/delayedCall barely progresses) and not a real bug;
+    confirmed by polling with short waits instead of one long one. Not a concern in a real browser
+    tab, just a testing-harness gotcha worth remembering.
+  - Verified in headless Chromium: idle bob visibly drifts frame to frame, happy pose + "+$10" on
+    an easy win, celebrate pose + "+$35" on a hard win, and the full truck1->2->3->DayComplete
+    flow with the correct difficulty breakdown. 304 tests pass; build clean.
+- 2026-10-22 — **Worker character polish:** idle bob reworked to a slow (1.8s) squash/stretch on scaleY only (feet anchored exactly at floorY, since origin is bottom-centre and only the vertical scale is tweened - verified sprite.y never moves while scaleY breathes between ~0.65 and ~0.67). Worker art updated by the user to 480x360 (3x the old 160x120, and meant to read larger on screen, not just sharper); CHARACTER_SCALE recalculated to 0.65 (~225 design px tall, up from ~150). Added a flat elliptical shadow under its feet (new worker-owned, not reused from the truck's trapezoid - a single standing figure doesn't need 'a rectangle in perspective'), same SHADOW_ALPHA as TRUCK_SHADOW_ALPHA so both read as the same light on the same floor. Verified in the browser: feet pinned during the breathing animation, shadow renders, no HUD/truck overlap at the new size.
+- 2026-10-22 — **Worker position/scale now adapt to the truck, per feedback:**
+  - **Shadow moved up:** its centre now sits slightly ABOVE the feet (SHADOW_Y_OFFSET flipped to
+    -10px) rather than below, so the character's legs overlap and hide its upper half - standing
+    'in the middle of it' as asked, instead of the whole ellipse trailing out behind.
+  - **Position + size now track the truck's own left edge** (interpolated between the truck's
+    measured narrowest/widest left-edge positions): a narrow truck leaves more floor, so the
+    worker stands closer to it, at up to 2x its previous size (CHARACTER_SCALE_MAX 1.3); a wide
+    truck pushes it back toward the HUD and shrinks it down to roughly its original size
+    (CHARACTER_SCALE_MIN 0.65). CHARACTER_GAP_FROM_TRUCK (70px) is always kept clear between the
+    worker and the truck for a possible future speech bubble.
+  - **Y-axis fixed:** the worker's feet now rest at a constant height (freeBottom, the same fixed
+    'floor' line the truck is vertically centred above - not truckBottomY, which moves with each
+    truck's own height) instead of following the truck's own wheel line, which used to shift
+    between puzzles of different board heights.
+  - Verified in the browser on a 2x4 (narrow - big, close), a 5x5 (wide - small, further back) and
+    a 5x7 (tall) truck: the character's feet sit at the exact same screen height in all three.
+- 2026-10-22 — **Worker scaled down 1.5x** per feedback (too big): CHARACTER_SCALE_MAX/MIN 1.3/0.65 -> 0.87/0.43, same ratio kept. Checked on the narrow 2x4 truck.
+- 2026-10-22 — **Reverted the adaptive position/scale** per feedback: the worker is back to a fixed CHARACTER_X (240px) and CHARACTER_SCALE (0.87, the top end of the previous range), no longer resizing or shuffling with the truck's width. Checked it stays clear of the truck on both the narrowest (2x4) and widest (5x5) boards. Also softened the idle breathing: IDLE_STRETCH 1.035 -> 1.02 (WorkerCharacter.js).
+- 2026-10-22 — **Switched every font to Fredoka.** All Arial/Arial Black text across the game (HUD, headers, DayCompleteScene's report, ShopScene, ApartmentScene, NewPieceIntro, FurnitureView, even the unreachable template-leftover Game.js/GameOver.js) now uses Fredoka, with fontStyle '700' standing in for the old Arial Black and '400' for plain Arial (the licence plate's existing '600' usage was left as-is). Preloader now loads and waits for all three weights (400/600/700) instead of just 600. Verified in the browser: PuzzleScene header/HUD, DayCompleteScene, and ShopScene all render in Fredoka; no Arial fallback visible.

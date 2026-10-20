@@ -11,8 +11,9 @@ import { UI_SCALE } from '../uiScale.js';
  * player's employer (name and department come from src/data/company.json) and shows:
  *
  *   - how many trucks were completed,
- *   - what the trucks earned and any one-off bonuses (e.g. the first-day bonus), and
- *   - the total earned that day.
+ *   - a breakdown of what was earned per truck difficulty (e.g. "2 Easy trucks  $20"),
+ *   - any one-off bonuses (e.g. the first-day bonus), and
+ *   - the total earned that day, at the bottom.
  *
  * Then three buttons:
  *
@@ -30,6 +31,10 @@ import { UI_SCALE } from '../uiScale.js';
 /** Vertical spacing between the report's rows, in design pixels. */
 const ROW_HEIGHT = 36;
 
+/** The order the difficulty breakdown rows are shown in, and their display names. */
+const DIFFICULTY_ORDER = ['easy', 'medium', 'hard'];
+const DIFFICULTY_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+
 export class DayCompleteScene extends Scene
 {
     constructor ()
@@ -43,7 +48,10 @@ export class DayCompleteScene extends Scene
      * @param {Object} data
      * @param {number} data.levelIndex - 0-based index of the level (day) just finished.
      * @param {number} data.trucksCompleted - trucks (puzzles) packed that day.
-     * @param {number} data.truckEarnings - coins the trucks paid, before any bonuses.
+     * @param {number} data.truckEarnings - coins the trucks paid in total, before any bonuses.
+     * @param {Object<string, {count: number, earned: number}>} data.byDifficulty - the same
+     *   total split by truck difficulty, e.g. { easy: { count: 2, earned: 20 } }. Only
+     *   difficulties actually played today appear as keys.
      * @param {Array<{label: string, amount: number}>} data.bonuses - one-off bonuses paid at the
      *   end of this level (empty on most days).
      * @param {number} data.earned - total earned that day: truckEarnings plus all bonuses.
@@ -67,15 +75,24 @@ export class DayCompleteScene extends Scene
         // ---- Work out the report's rows first, so the panel can be sized to fit them.
         // Each row is a label on the left and a value on the right, like a payslip.
         const bonuses = data.bonuses ?? [];
+        const byDifficulty = data.byDifficulty ?? {};
         const rows = [{ label: 'Trucks completed', value: String(data.trucksCompleted) }];
-        if (bonuses.length > 0)
+        // One row per difficulty actually played today (easy/medium/hard, in that order), e.g.
+        // "2 Easy trucks" -> "$20" - these already sum to data.truckEarnings, so there's no
+        // separate subtotal row needed before them.
+        for (const difficulty of DIFFICULTY_ORDER)
         {
-            // With bonuses, show where the total comes from: truck pay, then each bonus.
-            rows.push({ label: 'Truck earnings', value: `$${data.truckEarnings}` });
-            for (const bonus of bonuses)
+            const entry = byDifficulty[difficulty];
+            if (!entry || entry.count === 0)
             {
-                rows.push({ label: bonus.label, value: `+$${bonus.amount}`, color: '#3f7d4e' });
+                continue;
             }
+            const label = `${entry.count} ${DIFFICULTY_LABEL[difficulty]} truck${entry.count === 1 ? '' : 's'}`;
+            rows.push({ label, value: `$${entry.earned}` });
+        }
+        for (const bonus of bonuses)
+        {
+            rows.push({ label: bonus.label, value: `+$${bonus.amount}`, color: '#3f7d4e' });
         }
         rows.push({ label: 'Total earned today', value: `$${data.earned}`, total: true });
 
@@ -91,14 +108,14 @@ export class DayCompleteScene extends Scene
         // ---- Company header: the name, and the department the player works in.
         this.add
             .text(centerX, panelTop + 46 * S, companyData.name, {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 30 * S,
                 color: '#3a362f',
             })
             .setOrigin(0.5);
         this.add
             .text(centerX, panelTop + 82 * S, companyData.department.toUpperCase(), {
-                fontFamily: 'Arial',
+                fontFamily: 'Fredoka, Arial', fontStyle: '400',
                 fontSize: 13 * S,
                 color: '#8a7f6a',
             })
@@ -108,7 +125,7 @@ export class DayCompleteScene extends Scene
 
         this.add
             .text(centerX, panelTop + 134 * S, `Level ${data.levelIndex + 1} complete`, {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 20 * S,
                 color: '#3a362f',
             })
@@ -127,7 +144,8 @@ export class DayCompleteScene extends Scene
             }
 
             const style = {
-                fontFamily: row.total ? 'Arial Black' : 'Arial',
+                fontFamily: row.total ? 'Fredoka, Arial Black' : 'Fredoka, Arial',
+                fontStyle: row.total ? '700' : '400',
                 fontSize: (row.total ? 24 : 21) * S,
                 color: row.color ?? '#3a362f',
             };
@@ -139,7 +157,7 @@ export class DayCompleteScene extends Scene
         {
             this.add
                 .text(centerX, panelTop + (headerHeight + rows.length * ROW_HEIGHT + 14) * S, "That's every level - great work!", {
-                    fontFamily: 'Arial',
+                    fontFamily: 'Fredoka, Arial', fontStyle: '400',
                     fontSize: 18 * S,
                     color: '#6b6354',
                 })
@@ -152,7 +170,7 @@ export class DayCompleteScene extends Scene
         const makeButton = (x, label, onClick) => {
             const button = this.add
                 .text(x, buttonY, label, {
-                    fontFamily: 'Arial Black',
+                    fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                     fontSize: 24 * S,
                     color: '#3a362f',
                     backgroundColor: '#f0b86e',

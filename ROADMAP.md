@@ -215,9 +215,9 @@ tracked separately once the puzzle core is approved).
 
 ---
 
-## Milestones 9.1 - 9.17 — Additions Requested After Milestone 9
+## Milestones 9.1 - 9.19 — Additions Requested After Milestone 9
 These were requested directly after Milestone 9 was finished, so they sit between
-Milestone 9 and Milestone 10 rather than being renumbered. All seventeen are **done**; their
+Milestone 9 and Milestone 10 rather than being renumbered. All nineteen are **done**; their
 detailed decisions are in `TRACKER.md`'s Decision Log. Together they turn the single
 "shift" of Milestone 9 into the real game structure: **30 levels (days), each made of
 several trucks (puzzles)**, with a title screen at the front and a shop/apartment at the
@@ -494,6 +494,45 @@ after the last truck, input works on every truck, and no truck touches the top o
 
 **DoD:** No puzzle uses a shape before its level; every puzzle at levels 4/7/10/13/16 contains that
 level's new shape; levels 1-3 use only the six simple shapes; all 800 puzzles solvable.
+
+### Milestone 9.18 — Truck Extras and Fredoka (done)
+**Goal:** Make the truck look more like a truck with parts added after the frame is stretched.
+
+**Deliverables:**
+- Side lights, handlebars (left/right images) and a licence plate are placed on the stretched
+  frame (`addTruckExtras` in PuzzleScene) and move with the truck's bob.
+- The plate shows the truck's number ("TRUCK 03") in **Fredoka** (bundled via
+  `@fontsource/fredoka`; the Preloader waits for it to load).
+
+**DoD:** The extras sit correctly on every board size and the plate text is readable.
+
+### Milestone 9.19 — Worker Character, Difficulty Breakdown, Floating Reward, Tab Icon (done)
+**Goal:** Add the worker character (idle + win reactions), split the end-of-day report out by
+truck difficulty, show a floating "+$X" on every solve, and fix the browser tab's title/icon.
+
+**Deliverables:**
+- **Worker character** (objects/WorkerCharacter.js): stands in the left margin with its feet on
+  the truck's own floor line. Neutral pose idles with a slight endless up/down bob; handleWin()
+  switches it to the happy pose (easy/medium trucks) or the celebrate pose (hard trucks) with a
+  little pop, holding that pose until the next truck's fresh scene instance resets it to neutral.
+- **Floating reward:** the instant a truck is solved, "+$X" appears over the board and rises while
+  fading in, holding, then fading out (two tweens on one text object, not a single yoyo, so the
+  rise doesn't reverse along with the fade).
+- **Day-complete breakdown:** DayCompleteScene's report now lists one row per truck difficulty
+  actually played that day (e.g. "3 Easy trucks  $30"), which together replace the old single
+  "Truck earnings" subtotal, before any bonuses and the total. New registry key
+  `dayByDifficulty`, reset alongside `dayEarned`/`dayTrucksCompleted` at truck 0.
+- **Title screen art:** assets/title-bg.png (the "Cozy Couriers" logo, baked in) replaces the old
+  flat background + separate text title; the new start-packing.png button is placed in the open
+  floor gap between the two characters (re-measured click rect for the new art).
+- **Tab title/icon:** index.html's `<title>` was still "Phaser - Template" and the favicon the
+  stock Phaser logo. Title now reads "Cozy Couriers"; favicon replaced with the supplied
+  cozy-couriers-favicon.ico (public/favicon.ico, .ico format, 16/32/48px sizes).
+
+**DoD:** The worker bobs during gameplay and reacts correctly by difficulty on every win; the
+floating reward appears and fades on every solve; DayCompleteScene's numbers for level 1 (3 easy
+trucks, $10 each, +$10 first-day bonus) read "3 Easy trucks  $30", "First day bonus  +$10",
+"Total earned today  $40"; the browser tab shows "Cozy Couriers" and the new icon.
 
 ---
 

@@ -50,7 +50,7 @@ export class ShopScene extends Scene
 
         const backButton = this.add
             .text(24 * S, 24 * S, '< Back', {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 22 * S,
                 color: '#3a362f',
                 backgroundColor: '#f0b86e',
@@ -63,7 +63,7 @@ export class ShopScene extends Scene
 
         this.add
             .text(this.scale.width / 2, 40 * S, 'Shop', {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 32 * S,
                 color: '#3a362f',
             })
@@ -71,7 +71,7 @@ export class ShopScene extends Scene
 
         this.add
             .text(this.scale.width - 24 * S, 24 * S, `$${this.registry.get('totalEarned') ?? 0}`, {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 18 * S,
                 color: '#3a362f',
                 backgroundColor: '#f6dca0',
@@ -110,7 +110,7 @@ export class ShopScene extends Scene
             this.add.rectangle(x, y, ITEM_BOX.size, ITEM_BOX.size, 0xf0e4cc).setStrokeStyle(2 * S, 0xcfc3a8);
             this.add
                 .text(x, y, item.name, {
-                    fontFamily: 'Arial',
+                    fontFamily: 'Fredoka, Arial', fontStyle: '400',
                     fontSize: 18 * S,
                     color: '#3a362f',
                     align: 'center',

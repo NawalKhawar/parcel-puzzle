@@ -106,7 +106,7 @@ export class ApartmentScene extends Scene
         this.drawPanel(false);
         this.add
             .text(PANEL.x + PANEL.width / 2, PANEL.y + 22 * S, 'Inventory', {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 18 * S,
                 color: '#3a362f',
             })
@@ -200,7 +200,7 @@ export class ApartmentScene extends Scene
     {
         const backButton = this.add
             .text(24 * S, 24 * S, '< Back', {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 22 * S,
                 color: '#3a362f',
                 backgroundColor: '#f0b86e',
@@ -213,7 +213,7 @@ export class ApartmentScene extends Scene
         }, { delay: 120 });
 
         this.add.text(150 * S, 24 * S, 'Apartment', {
-            fontFamily: 'Arial Black',
+            fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
             fontSize: 22 * S,
             color: '#3a362f',
             backgroundColor: '#faf3e4',
@@ -222,7 +222,7 @@ export class ApartmentScene extends Scene
 
         this.add
             .text(PANEL.x - 16 * S, 24 * S, `$${this.registry.get('totalEarned') ?? 0}`, {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 18 * S,
                 color: '#3a362f',
                 backgroundColor: '#f6dca0',
@@ -283,10 +283,10 @@ export class ApartmentScene extends Scene
             g.fillRect(x + (SLOT.size - iconWidth) / 2, y + 8 * S + (48 * S - iconHeight) / 2, iconWidth, iconHeight);
 
             const name = this.add
-                .text(x + SLOT.size / 2, y + 62 * S, def.name, { fontFamily: 'Arial Black', fontSize: 12 * S, color: '#3a362f' })
+                .text(x + SLOT.size / 2, y + 62 * S, def.name, { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 12 * S, color: '#3a362f' })
                 .setOrigin(0.5);
             const size = this.add
-                .text(x + SLOT.size / 2, y + 77 * S, `${def.cols} x ${def.rows}`, { fontFamily: 'Arial', fontSize: 11 * S, color: '#6b6354' })
+                .text(x + SLOT.size / 2, y + 77 * S, `${def.cols} x ${def.rows}`, { fontFamily: 'Fredoka, Arial', fontStyle: '400', fontSize: 11 * S, color: '#6b6354' })
                 .setOrigin(0.5);
 
             this.inventoryObjects.push(g, name, size);
@@ -298,7 +298,7 @@ export class ApartmentScene extends Scene
             this.inventoryObjects.push(
                 this.add
                     .text(PANEL.x + PANEL.width / 2, SLOT.firstY + 40 * S, 'Everything is placed.\nDrag items here\nto put them away.', {
-                        fontFamily: 'Arial',
+                        fontFamily: 'Fredoka, Arial', fontStyle: '400',
                         fontSize: 14 * S,
                         color: '#6b6354',
                         align: 'center',

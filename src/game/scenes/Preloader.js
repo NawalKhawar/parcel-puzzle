@@ -1,4 +1,10 @@
 import { Scene } from 'phaser';
+// The game's font, Fredoka, used everywhere now (bundled by the @fontsource package so it works
+// offline). Three weights cover every use: 400 (regular body/label text), 600 (the licence-plate
+// text on the truck), and 700 (headings and buttons, standing in for the old Arial Black).
+import '@fontsource/fredoka/400.css';
+import '@fontsource/fredoka/600.css';
+import '@fontsource/fredoka/700.css';
 
 /**
  * Every image in the top-level assets/ folder (the game's art: the 12 pieces, the conveyor belt,
@@ -55,7 +61,14 @@ export class Preloader extends Scene
         this.load.setPath('');
         for (const [file, url] of Object.entries(ART))
         {
-            const key = file.split('/').pop().replace(/\.png$/, '');
+            let key = file.split('/').pop().replace(/\.png$/, '');
+            // 'background' is already taken by the stock template's placeholder (loaded as
+            // 'background' from public/assets/bg.png in Boot.js, below) - rename ours so it
+            // doesn't silently lose that key/value race and end up showing the placeholder.
+            if (key === 'background')
+            {
+                key = 'warehouse-background';
+            }
             this.load.image(key, url);
         }
 
@@ -69,7 +82,10 @@ export class Preloader extends Scene
         //  When all the assets have loaded, it's often worth creating global objects here that the rest of the game can use.
         //  For example, you can define global animations here, so we can use them in other scenes.
 
-        //  Assets are ready: show the title screen, whose Play button starts level 1.
-        this.scene.start('TitleScene');
+        //  A web font only starts downloading when something first uses it, and Phaser text drawn
+        //  before it arrives would use a fallback font. So ask for every weight now and wait for
+        //  all of them (a failure just means the fallback font is used).
+        const start = () => this.scene.start('TitleScene');
+        Promise.all(['400', '600', '700'].map((weight) => document.fonts.load(`${weight} 20px Fredoka`))).then(start, start);
     }
 }

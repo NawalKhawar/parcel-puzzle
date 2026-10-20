@@ -80,7 +80,7 @@ export class FurnitureView {
         this.graphics = scene.add.graphics();
         this.label = scene.add
             .text(0, 0, def.name, {
-                fontFamily: 'Arial Black',
+                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 12 * UI_SCALE,
                 color: '#ffffff',
                 stroke: '#3a362f',

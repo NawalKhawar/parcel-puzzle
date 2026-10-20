@@ -126,10 +126,9 @@ async function main() {
         console.log(`Title screenshot saved to ${titlePath}`);
 
         // Click the Play button. Phaser draws to a canvas, so there's no DOM button to
-        // target: instead click where TitleScene places it - horizontally centered, and
-        // 70/720 of the canvas height below its vertical center.
+        // target: instead click where TitleScene places it (see its BUTTON_X/Y_FRACTION).
         const box = await page.locator('canvas').boundingBox();
-        await page.mouse.click(box.x + box.width / 2, box.y + box.height * (0.5 + 70 / 720));
+        await page.mouse.click(box.x + box.width * 0.508, box.y + box.height * 0.71);
         await page.waitForTimeout(500);
 
         await page.screenshot({ path: outPath });
