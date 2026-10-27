@@ -1,0 +1,49 @@
+{
+  "wallpapers": [
+    {
+      "id": "cream",
+      "name": "Cream",
+      "color": "#f5f0e8"
+    },
+    {
+      "id": "soft-blue",
+      "name": "Soft Blue",
+      "color": "#dce7f0"
+    },
+    {
+      "id": "soft-green",
+      "name": "Soft Green",
+      "color": "#dff0e0"
+    },
+    {
+      "id": "pale-pink",
+      "name": "Pale Pink",
+      "color": "#f0e0e8"
+    },
+    {
+      "id": "soft-yellow",
+      "name": "Soft Yellow",
+      "color": "#f5f0d0"
+    },
+    {
+      "id": "lavender",
+      "name": "Lavender",
+      "color": "#e8e0f0"
+    },
+    {
+      "id": "sage",
+      "name": "Sage",
+      "color": "#d0e8d8"
+    },
+    {
+      "id": "dusty-rose",
+      "name": "Dusty Rose",
+      "color": "#e0c8d0"
+    },
+    {
+      "id": "warm-tan",
+      "name": "Warm Tan",
+      "color": "#e8d8c8"
+    }
+  ]
+}

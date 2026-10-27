@@ -3,7 +3,7 @@ import { UI_SCALE } from '../uiScale.js';
 /**
  * uiPanel.js
  *
- * A small helper around assets/ui-panel.png, a wood-framed nine-slice panel (the corners and
+ * A small helper around assets/ui/ui-panel.png, a wood-framed nine-slice panel (the corners and
  * edges stay crisp at any size; only the flat middle strips stretch). Used anywhere a simple
  * rounded panel is needed - currently the pause menu and the "New piece!" popup.
  */

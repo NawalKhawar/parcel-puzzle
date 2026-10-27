@@ -1,0 +1,77 @@
+{
+  "tiers": {
+    "easy":   { "name": "Easy",   "units": 2 },
+    "medium": { "name": "Medium", "units": 3 },
+    "hard":   { "name": "Hard",   "units": 7 }
+  },
+
+  "ranks": [
+    { "rank": 1, "name": "Rookie Packer", "startDay": 1,  "unitValue": 5 },
+    { "rank": 2, "name": "Senior Packer", "startDay": 20, "unitValue": 6 },
+    { "rank": 3, "name": "Master Packer", "startDay": 40, "unitValue": 7 }
+  ],
+
+  "workload": [
+    { "fromDay": 1,  "toDay": 1,    "trucks": [ { "tier": "easy", "count": 3 } ] },
+    { "fromDay": 2,  "toDay": 5,    "trucks": [ { "tier": "easy", "count": 4 } ] },
+    { "fromDay": 6,  "toDay": 14,   "trucks": [ { "tier": "easy", "count": 3 }, { "tier": "medium", "count": 1 } ] },
+    { "fromDay": 15, "toDay": 19,   "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 } ] },
+    { "fromDay": 20, "toDay": 25,   "trucks": [ { "tier": "easy", "count": 3 }, { "tier": "medium", "count": 2 } ] },
+    { "fromDay": 26, "toDay": 30,   "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 3 } ] },
+    { "fromDay": 31, "toDay": 39,   "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 }, { "tier": "hard", "count": 1 } ] },
+    { "fromDay": 40, "toDay": null, "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 }, { "tier": "hard", "count": 2 } ] }
+  ],
+
+  "bonuses": [
+    { "id": "first-day",   "label": "First day bonus",   "day": 1,  "amount": 10,  "enabled": true },
+    { "id": "first-week",  "label": "First week bonus",  "day": 7,  "amount": 50,  "enabled": true, "screen": true },
+    { "id": "first-month", "label": "First month bonus", "day": 30, "amount": 100, "enabled": true, "screen": true },
+    { "id": "promotion-1", "label": "Promotion bonus",   "day": 20, "amount": 50,  "enabled": false },
+    { "id": "promotion-2", "label": "Promotion bonus",   "day": 40, "amount": 50,  "enabled": false },
+    { "id": "finale",      "label": "Finale bonus",      "day": 50, "amount": 250, "enabled": false }
+  ],
+
+  "hints": { "costUnits": 3 },
+
+  "overtime": {
+    "enabled": true,
+    "days": [10, 15, 20, 25, 30, 35, 40, 45, 50],
+    "multiplier": 1.5
+  },
+
+  "shop": [
+    { "id": "cream",         "name": "Cream",         "category": "wallpaper", "unlockDay": 1,  "price": 15,  "enabled": true },
+    { "id": "soft-blue",     "name": "Soft Blue",     "category": "wallpaper", "unlockDay": 1,  "price": 15,  "enabled": true },
+    { "id": "soft-green",    "name": "Soft Green",    "category": "wallpaper", "unlockDay": 1,  "price": 15,  "enabled": true },
+    { "id": "pale-pink",     "name": "Pale Pink",     "category": "wallpaper", "unlockDay": 1,  "price": 20,  "enabled": true },
+    { "id": "soft-yellow",   "name": "Soft Yellow",   "category": "wallpaper", "unlockDay": 3,  "price": 25,  "enabled": true },
+    { "id": "lavender",      "name": "Lavender",      "category": "wallpaper", "unlockDay": 3,  "price": 25,  "enabled": true },
+    { "id": "sage",          "name": "Sage",          "category": "wallpaper", "unlockDay": 3,  "price": 25,  "enabled": true },
+    { "id": "dusty-rose",    "name": "Dusty Rose",    "category": "wallpaper", "unlockDay": 8,  "price": 35,  "enabled": true },
+    { "id": "warm-tan",      "name": "Warm Tan",      "category": "wallpaper", "unlockDay": 8,  "price": 35,  "enabled": true },
+
+    { "id": "clock",         "name": "Clock",         "category": "decor",     "unlockDay": 1,  "price": 20,  "enabled": true },
+    { "id": "poster-sports", "name": "Sports Poster", "category": "decor",     "unlockDay": 2,  "price": 30,  "enabled": true },
+    { "id": "poster-space",  "name": "Space Poster",  "category": "decor",     "unlockDay": 2,  "price": 30,  "enabled": true },
+    { "id": "photo-frame",   "name": "Photo Frame",   "category": "decor",     "unlockDay": 4,  "price": 40,  "enabled": true },
+    { "id": "rug",           "name": "Rug",           "category": "decor",     "unlockDay": 4,  "price": 40,  "enabled": true },
+    { "id": "tall-plant",    "name": "Potted Plant",  "category": "decor",     "unlockDay": 6,  "price": 45,  "enabled": true },
+    { "id": "tall-lamp",     "name": "Tall Lamp",     "category": "decor",     "unlockDay": 8,  "price": 50,  "enabled": true },
+
+    { "id": "mattress",      "name": "Mattress",      "category": "furniture", "unlockDay": 3,  "price": 60,  "enabled": true },
+    { "id": "coffee-table",  "name": "Coffee Table",  "category": "furniture", "unlockDay": 10, "price": 90,  "enabled": true },
+    { "id": "couch",         "name": "Small Couch",   "category": "furniture", "unlockDay": 12, "price": 150, "enabled": true },
+    { "id": "bookshelf",     "name": "Bookshelf",     "category": "furniture", "unlockDay": 14, "price": 150, "enabled": true },
+    { "id": "large-rug",     "name": "Large Rug",     "category": "furniture", "unlockDay": 16, "price": 120, "enabled": true },
+    { "id": "mini-fridge",   "name": "Mini Fridge",   "category": "furniture", "unlockDay": 18, "price": 180, "enabled": true },
+    { "id": "bed",           "name": "Bed",           "category": "furniture", "unlockDay": 22, "price": 350, "enabled": true },
+    { "id": "fridge",        "name": "Fridge",        "category": "furniture", "unlockDay": 32, "price": 600, "enabled": true },
+
+    { "id": "lux-1",         "name": "Luxury Item 1", "category": "luxury",    "unlockDay": 24, "price": 300, "enabled": false },
+    { "id": "lux-2",         "name": "Luxury Item 2", "category": "luxury",    "unlockDay": 28, "price": 350, "enabled": false },
+    { "id": "lux-3",         "name": "Luxury Item 3", "category": "luxury",    "unlockDay": 34, "price": 450, "enabled": false },
+    { "id": "lux-4",         "name": "Luxury Item 4", "category": "luxury",    "unlockDay": 38, "price": 500, "enabled": false },
+    { "id": "lux-5",         "name": "Luxury Item 5", "category": "luxury",    "unlockDay": 42, "price": 550, "enabled": false },
+    { "id": "lux-6",         "name": "Luxury Item 6", "category": "luxury",    "unlockDay": 46, "price": 700, "enabled": false }
+  ]
+}

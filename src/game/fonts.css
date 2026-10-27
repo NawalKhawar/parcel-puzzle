@@ -1,0 +1,33 @@
+/*
+ * fonts.css
+ *
+ * The game's font, Fredoka, in the three weights it uses (400 body text, 600 licence plate, 700
+ * headings and buttons) - Latin characters only. The font files come from the @fontsource package
+ * (so the game works offline) but are declared here instead of importing the package's own
+ * latin-*.css files: those also list an old .woff fallback for every weight, and the bundler then
+ * ships those three extra files that no browser able to run this game ever downloads. Every browser
+ * that supports WebP (which all the game's art is) supports .woff2.
+ */
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url(../../node_modules/@fontsource/fredoka/files/fredoka-latin-400-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url(../../node_modules/@fontsource/fredoka/files/fredoka-latin-600-normal.woff2) format('woff2');
+}
+
+@font-face {
+  font-family: 'Fredoka';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url(../../node_modules/@fontsource/fredoka/files/fredoka-latin-700-normal.woff2) format('woff2');
+}

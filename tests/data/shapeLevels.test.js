@@ -3,9 +3,9 @@
  *
  * Tests for the shape-gated puzzle pool (src/data/levels.shapes.json), a second data set with
  * the same level structure as levels.json but where piece shapes are introduced gradually:
- *   - levels 1-3 use only the simple shapes (dot, domino_h, domino_v, tri_i, square, bar4);
- *   - level 4 adds tri_l and l4;
- *   - levels 7, 10, 13 and 16 each add one more shape (t4, s4, p5, plus), three levels apart;
+ *   - level 1 starts with just the dot and the square;
+ *   - then one new shape at a time: every 3 levels (domino_h 3, domino_v 6, tri_i 9, bar4 12), every 4
+ *     (tri_l 16, l4 20, t4 24, s4 28), then every 5 (p5 33, plus 38) - so all 12 are in play from level 38;
  *   - the number of trucks per day and the easy/medium/hard mix match levels.json;
  *   - each truck slot holds a pool of 5 puzzles, and every one is solvable.
  * Also covers the loadShapeLevels validator with small hand-built data.
@@ -18,7 +18,13 @@ import { solve } from '../../src/core/Solver.js';
 import shapesRaw from '../../src/data/levels.shapes.json' with { type: 'json' };
 import levelsRaw from '../../src/data/levels.json' with { type: 'json' };
 
-const SIMPLE = ['dot', 'domino_h', 'domino_v', 'tri_i', 'square', 'bar4'];
+/** The shapes available from level 1. */
+const START = ['dot', 'square'];
+/** [level, shape] for every unlock, in order. */
+const UNLOCKS = [
+    [3, 'domino_h'], [6, 'domino_v'], [9, 'tri_i'], [12, 'bar4'], [16, 'tri_l'],
+    [20, 'l4'], [24, 't4'], [28, 's4'], [33, 'p5'], [38, 'plus'],
+];
 const POOL_SIZE = 5;
 
 /** A tiny valid shape level to mutate in the validator tests: a 1x2 board and a domino. */
@@ -30,7 +36,7 @@ const validLevel = () => ({
         {
             id: 'L1-T1',
             difficulty: 'easy',
-            puzzles: [{ id: 'L1-T1-p1', rows: 1, cols: 2, blocked: [], pieces: ['domino_h'], difficulty: 'easy', reward: 2 }],
+            puzzles: [{ id: 'L1-T1-p1', rows: 1, cols: 2, blocked: [], pieces: ['domino_h'], difficulty: 'easy' }],
         },
     ],
 });
@@ -81,40 +87,30 @@ describe('shipped levels.shapes.json - shape progression', () => {
     const levels = loadShapeLevels(shapesRaw);
 
     // Which shapes each level is expected to allow, following the unlock plan.
-    const expectedAllowed = (levelNumber) => {
-        const unlocks = [
-            [4, ['tri_l', 'l4']],
-            [7, ['t4']],
-            [10, ['s4']],
-            [13, ['p5']],
-            [16, ['plus']],
-        ];
-        return [...SIMPLE, ...unlocks.filter(([from]) => from <= levelNumber).flatMap(([, shapes]) => shapes)];
-    };
+    const expectedAllowed = (levelNumber) => [...START, ...UNLOCKS.filter(([from]) => from <= levelNumber).map(([, shape]) => shape)];
 
-    test('there are 30 levels', () => {
-        assert.equal(levels.length, 30);
+    test('there are 50 levels', () => {
+        assert.equal(levels.length, 50);
     });
 
-    test('levels 1 to 3 only allow (and only use) the simple shapes', () => {
-        for (const level of levels.slice(0, 3)) {
-            assert.deepEqual(level.allowedShapes, SIMPLE, `${level.id} allowed shapes`);
+    test('levels 1 and 2 only allow (and only use) the dot and the square', () => {
+        for (const level of levels.slice(0, 2)) {
+            assert.deepEqual(level.allowedShapes, START, `${level.id} allowed shapes`);
             assert.deepEqual(level.newShapes, [], `${level.id} introduces nothing`);
             for (const puzzle of level.trucks.flatMap((slot) => slot.puzzles)) {
-                assert.ok(puzzle.pieces.every((id) => SIMPLE.includes(id)), `${puzzle.id} must only use simple shapes`);
+                assert.ok(puzzle.pieces.every((id) => START.includes(id)), `${puzzle.id} must only use the dot and square`);
             }
         }
     });
 
-    test('shapes are introduced at levels 4 (tri_l + l4), 7 (t4), 10 (s4), 13 (p5) and 16 (plus) - every 3 levels after the first', () => {
+    test('exactly one shape is introduced at a time: every 3 levels, then every 4, then every 5, in the planned order', () => {
         const introductions = levels.map((level, index) => [index + 1, level.newShapes]).filter(([, shapes]) => shapes.length > 0);
-        assert.deepEqual(introductions, [
-            [4, ['tri_l', 'l4']],
-            [7, ['t4']],
-            [10, ['s4']],
-            [13, ['p5']],
-            [16, ['plus']],
-        ]);
+        assert.deepEqual(introductions, UNLOCKS.map(([level, shape]) => [level, [shape]]));
+    });
+
+    test('all 12 shapes are in play from level 38', () => {
+        assert.equal(levels[37].allowedShapes.length, 12);
+        assert.equal(levels[49].allowedShapes.length, 12);
     });
 
     test('every level allows exactly the shapes unlocked so far', () => {
@@ -124,7 +120,7 @@ describe('shipped levels.shapes.json - shape progression', () => {
     });
 
     test('no puzzle uses a shape before the level that introduces it', () => {
-        const introducedAt = { tri_l: 4, l4: 4, t4: 7, s4: 10, p5: 13, plus: 16 };
+        const introducedAt = Object.fromEntries(UNLOCKS.map(([level, shape]) => [shape, level]));
         levels.forEach((level, index) => {
             for (const puzzle of level.trucks.flatMap((slot) => slot.puzzles)) {
                 for (const id of puzzle.pieces) {
@@ -134,7 +130,7 @@ describe('shipped levels.shapes.json - shape progression', () => {
         });
     });
 
-    test('at a level that introduces shapes, every puzzle contains at least one of them (and level 4 shows both)', () => {
+    test('at a level that introduces a shape, every puzzle contains it', () => {
         for (const level of levels.filter((entry) => entry.newShapes.length > 0)) {
             const puzzles = level.trucks.flatMap((slot) => slot.puzzles);
             for (const puzzle of puzzles) {
@@ -172,10 +168,10 @@ describe('shipped levels.shapes.json - structure matches the normal levels', () 
         }
     });
 
-    test('every board is square or portrait, and every puzzle has a positive integer reward', () => {
+    test('every board is square or portrait, and no puzzle or level carries money data', () => {
         for (const puzzle of levels.flatMap((level) => level.trucks.flatMap((slot) => slot.puzzles))) {
             assert.ok(puzzle.rows >= puzzle.cols, `${puzzle.id} is landscape`);
-            assert.ok(Number.isInteger(puzzle.reward) && puzzle.reward > 0, `${puzzle.id} reward`);
+            assert.equal(puzzle.reward, undefined, `${puzzle.id} should not have a reward`);
         }
     });
 

@@ -2,8 +2,8 @@
 /**
  * generate-levels.js
  *
- * Authoring tool that (re)builds src/data/levels.json: the game's 30 levels ("days"),
- * each holding several trucks (individual packing puzzles). Hand-writing 142 puzzles
+ * Authoring tool that (re)builds src/data/levels.json: the game's 50 levels ("days"),
+ * each holding several trucks (individual packing puzzles). Hand-writing ~240 puzzles
  * that ramp smoothly in difficulty isn't practical, so this script invents them:
  *
  *   1. The LEVEL PLAN (below) says how many trucks each level has and what difficulty
@@ -28,9 +28,9 @@
  * `npm test` to double-check.
  *
  * SHAPE-GATED MODE. A second data set with the same level structure (same trucks per day,
- * same easy/medium/hard mix) but where the piece shapes are introduced gradually: levels 1-3
- * use only the simple shapes, level 4 adds tri_l and l4, and levels 7, 10, 13 and 16 add one
- * more shape each (see SHAPE_UNLOCKS). Every truck slot gets a POOL of several different
+ * same easy/medium/hard mix) but where the piece shapes are introduced gradually: level 1
+ * has only the dot and the square, then one new shape arrives every 3 levels (3, 6, 9, 12), then
+ * every 4 (16, 20, 24, 28), then every 5 (33, 38) - see SHAPE_UNLOCKS. Every truck slot gets a POOL of several different
  * puzzles to choose from. The normal levels.json is not touched by this mode.
  *
  * Plain Node script - must never import 'phaser' (see "Architectural boundary" in
@@ -55,7 +55,7 @@ const SHAPES_OUTPUT_PATH = path.resolve(__dirname, '../src/data/levels.shapes.js
 // ---------------------------------------------------------------------------
 
 /** Total number of levels (days) in the game. */
-const LEVEL_COUNT = 30;
+const LEVEL_COUNT = 50;
 
 /** Score thresholds that turn a 0..1 difficulty score into an easy/medium/hard label. */
 const EASY_MAX = 0.34;
@@ -65,19 +65,28 @@ const MEDIUM_MAX = 0.67;
  * The difficulty label each truck of a level must have, in play order. This is THE
  * level plan - edit it to change how many trucks a day has and how they ramp:
  *
- *   Level 1       : 3 trucks - easy, easy, easy
- *   Levels 2-7    : 4 trucks - 2 easy, 2 medium
- *   Levels 8-12   : 5 trucks - 2 easy, 2 medium, 1 hard
- *   Levels 13-30  : 6 trucks - 2 easy, 2 medium, 2 hard
+ *   Level 1       : 3 trucks - 3 easy
+ *   Levels 2-5    : 4 trucks - 4 easy
+ *   Levels 6-14   : 4 trucks - 3 easy, 1 medium
+ *   Levels 15-19  : 4 trucks - 2 easy, 2 medium
+ *   Levels 20-25  : 5 trucks - 3 easy, 2 medium   (business booms: one more truck from level 20)
+ *   Levels 26-30  : 5 trucks - 2 easy, 3 medium
+ *   Levels 31-39  : 5 trucks - 2 easy, 2 medium, 1 hard
+ *   Levels 40-50  : 6 trucks - 2 easy, 2 medium, 2 hard   (another workload increase at level 40)
  *
  * @param {number} levelNumber - 1-based level number.
  * @returns {Array<'easy' | 'medium' | 'hard'>}
  */
 function labelsForLevel(levelNumber) {
-    if (levelNumber === 1) return ['easy', 'easy', 'easy'];
-    if (levelNumber <= 7) return ['easy', 'easy', 'medium', 'medium'];
-    if (levelNumber <= 12) return ['easy', 'easy', 'medium', 'medium', 'hard'];
-    return ['easy', 'easy', 'medium', 'medium', 'hard', 'hard'];
+    const [E, M, H] = ['easy', 'medium', 'hard'];
+    if (levelNumber === 1) return [E, E, E];
+    if (levelNumber <= 5) return [E, E, E, E];
+    if (levelNumber <= 14) return [E, E, E, M];
+    if (levelNumber <= 19) return [E, E, M, M];
+    if (levelNumber <= 25) return [E, E, E, M, M];
+    if (levelNumber <= 30) return [E, E, M, M, M];
+    if (levelNumber <= 39) return [E, E, M, M, H];
+    return [E, E, M, M, H, H];
 }
 
 /**
@@ -126,7 +135,11 @@ function targetDifficulty(levelNumber, truckIndex) {
         return lerp(0.0, 0.12, truckIndex / (labels.length - 1));
     }
 
-    const progress = (levelNumber - 2) / 28; // 0 at level 2, 1 at level 30.
+    // How far through the campaign this level is, measured from the level at which this label first
+    // appears (so the first medium truck, level 6, starts at the bottom of the medium band, and the
+    // first hard truck, level 31, at the bottom of the hard band): 0 there, 1 at the last level.
+    const FIRST_LEVEL = { easy: 2, medium: 6, hard: 31 };
+    const progress = clamp01((levelNumber - FIRST_LEVEL[label]) / (LEVEL_COUNT - FIRST_LEVEL[label]));
     // [low end, high end] of each band at the first level and at the last level.
     const bands = {
         easy: [[0.04, 0.14], [0.14, 0.3]],
@@ -225,8 +238,8 @@ const HARD_WEIGHTS = {
 /** Shapes a player instantly recognises as "just fits in a rectangle" - they don't count as "irregular". */
 const REGULAR_SHAPES = new Set(['dot', 'domino_h', 'domino_v', 'tri_i', 'square', 'bar4']);
 
-/** The most pieces a truck may have (more than this can't be laid out comfortably in the tray). */
-const MAX_PIECES = 9;
+/** The most pieces a truck may have (more than this can't be laid out comfortably in the tray; a 44-cell 8x6 board needs about 11). */
+const MAX_PIECES = 12;
 
 /**
  * @typedef {Object} ShapeRules
@@ -266,7 +279,7 @@ function weightsFor(t, rules = null) {
 /**
  * Every board size the generator may use, as [rows, cols]. Boards are always square or
  * portrait (rows >= cols), never landscape, because the board will eventually represent
- * the open back of a mail truck. At most 7 rows x 5 cols; PuzzleScene shrinks the cell
+ * the open back of a mail truck. At most 8 rows x 6 cols; PuzzleScene shrinks the cell
  * size on tall boards so board + piece tray still fit on the 1280x720 screen.
  */
 const BOARD_SIZES = [
@@ -274,11 +287,38 @@ const BOARD_SIZES = [
     [3, 3], [4, 3], [5, 3], [6, 3], [7, 3],
     [4, 4], [5, 4], [6, 4], [7, 4],
     [5, 5], [6, 5], [7, 5],
+    // Bigger boards for the late, hard days (the cap is 8 rows x 6 cols).
+    [8, 2], [8, 3], [8, 4], [8, 5],
+    [6, 6], [7, 6], [8, 6],
 ];
 
 /**
+ * How many open cells a board aims for at difficulty t. Up to t = 0.8 it grows from 8 to 25.6
+ * cells; from there to t = 0.88 it climbs steeply to 44 (an 8x6 board with 4 blocked cells), and
+ * stays at 44 above that. A score of about 0.9 is the most a real puzzle reaches (see scorePuzzle),
+ * so the very hardest trucks are the ones that land on the biggest boards.
+ *
+ * @param {number} t - 0..1
+ * @returns {number}
+ */
+function openCellsFor(t) {
+    if (t <= 0.8) return 8 + 22 * t;
+    return Math.min(44, 25.6 + (t - 0.8) * 230);
+}
+
+/**
+ * The inverse of openCellsFor: the 0..1 "board size" score of a given open-cell count.
+ *
+ * @param {number} openCells
+ * @returns {number}
+ */
+function sizeScoreOf(openCells) {
+    return clamp01(openCells <= 25.6 ? (openCells - 8) / 22 : 0.8 + (openCells - 25.6) / 230);
+}
+
+/**
  * Picks a board size and blocked-cell count for a target difficulty. Harder = more open
- * cells (8 at t=0 up to 30 at t=1), more blocked cells (0 up to 4), and wider boards
+ * cells (8 at t=0, 25.6 at t=0.8, 44 at t=0.88), more blocked cells (0 up to 4), and wider boards
  * (2-column boards are close to a 1-D puzzle, so they're only used while the game is easy).
  *
  * @param {number} t
@@ -286,12 +326,16 @@ const BOARD_SIZES = [
  * @param {number} [slack] - how many cells further from the ideal open-cell count a board may be
  *   and still be considered. 2 normally; the shape-gated mode widens it when a puzzle must
  *   contain a big new shape (e.g. the plus needs a 3x3 area), which small boards can't offer.
+ * @param {number} [minBlocked] - the fewest blocked cells to use (0 normally).
+ * @param {number} [minColsFloor] - if set, caps the minimum board width (2 lets narrow boards in).
  * @returns {{rows: number, cols: number, blockedCount: number}}
  */
-function pickBoard(t, rng, slack = 2) {
-    const targetOpen = Math.round(8 + 22 * t);
-    const blockedCount = t < 0.12 ? 0 : Math.round(t * 4);
-    const minCols = t < 0.15 ? 2 : t < 0.45 ? 3 : 4;
+function pickBoard(t, rng, slack = 2, minBlocked = 0, minColsFloor = 0) {
+    const targetOpen = Math.round(openCellsFor(t));
+    // minBlocked: with only a couple of shapes there are too few different open boards to fill the
+    // puzzle pools, so a blocked cell is forced - its position multiplies the possible puzzles.
+    const blockedCount = Math.max(minBlocked, t < 0.12 ? 0 : Math.round(t * 4));
+    const minCols = Math.min(t < 0.15 ? 2 : t < 0.45 ? 3 : t < 0.85 ? 4 : 5, minColsFloor || 99);
 
     // Score every allowed size by how close its open-cell count is to the target.
     const options = BOARD_SIZES.filter(([, cols]) => cols >= minCols).map(([rows, cols]) => ({
@@ -409,10 +453,10 @@ function clamp01(value) {
  * weights below are the "recipe" for what we consider hard; tweak them and re-run the
  * generator to reshape the whole difficulty curve.
  *
- *   40%  board size        (8 open cells -> 0, 30 open cells -> 1)
+ *   40%  board size        (8 open cells -> 0, 25.6 -> 0.8, 44 -> 0.88, 48 -> 0.9)
  *   20%  irregular pieces  (share of pieces that aren't plain bars/blocks/dots)
  *   15%  blocked cells     (0 -> 0, 4 -> 1)
- *   15%  piece count       (2 pieces -> 0, 9 pieces -> 1)
+ *   15%  piece count       (2 pieces -> 0, 10 pieces -> 1)
  *   10%  search effort     (how many placements the solver tried; log scale)
  *
  * @param {number} openCells
@@ -422,10 +466,10 @@ function clamp01(value) {
  * @returns {number}
  */
 function scorePuzzle(openCells, blockedCount, pieces, nodesExplored) {
-    const size = clamp01((openCells - 8) / 22);
+    const size = sizeScoreOf(openCells);
     const irregular = pieces.filter((id) => !REGULAR_SHAPES.has(id)).length / pieces.length;
     const blockedShare = clamp01(blockedCount / 4);
-    const pieceShare = clamp01((pieces.length - 2) / 7);
+    const pieceShare = clamp01((pieces.length - 2) / 8);
     const effort = clamp01(Math.log10(Math.max(1, nodesExplored)) / 4.5);
     return 0.4 * size + 0.2 * irregular + 0.15 * blockedShare + 0.15 * pieceShare + 0.1 * effort;
 }
@@ -447,11 +491,16 @@ function signature(puzzle) {
  * @param {number} t - target difficulty.
  * @param {() => number} rng
  * @param {ShapeRules | null} [rules] - shape restrictions (shape-gated mode), or null for none.
+ * @param {boolean} [widen] - a scarce slot that has run short of puzzles: consider a wider range of
+ *   board sizes and force a blocked cell, which multiplies the distinct puzzles available.
  * @returns {null | {rows: number, cols: number, blocked: Array<[number, number]>, pieces: string[], score: number, solutionCount: number}}
  *   null if the attempt was unusable (couldn't be tiled, too many pieces, or too slow to solve).
  */
-function makeCandidate(t, rng, rules = null) {
-    const { rows, cols, blockedCount } = pickBoard(t, rng, rules && rules.requireOneOf ? 6 : 2);
+function makeCandidate(t, rng, rules = null, widen = false) {
+    // While only 3 or fewer shapes exist (levels 1-7) there are very few distinct boards, so force a blocked cell.
+    const fewShapes = (rules && rules.allowed.size <= 3) || widen;
+    const slack = rules && rules.requireOneOf ? 6 : fewShapes ? 4 : 2;
+    const { rows, cols, blockedCount } = pickBoard(t, rng, slack, fewShapes ? 1 : 0, fewShapes ? 2 : 0);
 
     // Choose which cells are blocked: random distinct cells.
     const allCells = [];
@@ -462,7 +511,8 @@ function makeCandidate(t, rng, rules = null) {
     }
     const blocked = shuffle(allCells, rng).slice(0, blockedCount);
 
-    const maxDots = t < 0.67 ? 2 : 1;
+    // Early easy boards only have the dot and the square to work with, so they may use more dots.
+    const maxDots = rules && rules.allowed.size <= 3 ? 6 : t < 0.15 ? 4 : t < 0.67 ? 2 : 1;
     const tiled = randomTiling(rows, cols, blocked, weightsFor(t, rules), maxDots, rng);
     if (!tiled || tiled.length < 2 || tiled.length > MAX_PIECES) {
         return null;
@@ -509,7 +559,9 @@ function findBestPuzzles(t, rng, seen, rules = null, count = 1) {
 
     const ENOUGH = Math.max(40, count * 10); // acceptable candidates to compare before picking winners.
     const GIVE_UP_STRICT = 600; // attempts before relaxing the solution-count rule.
-    const HARD_STOP = 3000; // attempts before giving up.
+    // Attempts before giving up. A search for several puzzles (a pool) that has not yet found enough
+    // keeps going longer, since scarce slots (few boards fit the rules) can need many tries.
+    const HARD_STOP = count > 1 ? 9000 : 3000;
 
     const acceptable = [];
     let relaxed = false;
@@ -520,7 +572,8 @@ function findBestPuzzles(t, rng, seen, rules = null, count = 1) {
             relaxed = true;
         }
 
-        const candidate = makeCandidate(t, rng, rules);
+        // After 1500 attempts without enough puzzles (the slot is scarce), widen the search.
+        const candidate = makeCandidate(t, rng, rules, attempt > 1500 && acceptable.length < count);
         if (!candidate) continue;
         if (labelOf(candidate.score) !== wantedLabel) continue;
         if (strict && candidate.solutionCount > maxSolutions) continue;
@@ -565,17 +618,8 @@ function findBestPuzzle(t, rng, seen) {
 // Assembly + output.
 // ---------------------------------------------------------------------------
 
-/** What a truck pays, by difficulty label. This is the game's economy for packing work. */
-const REWARD_BY_DIFFICULTY = { easy: 10, medium: 15, hard: 35 };
-
-/**
- * One-off bonuses paid at the END of a level, shown on the end-of-day popup (shape-gated data
- * only). Keyed by 1-based level number. Day 1 pays a $10 first-day bonus, so with its three
- * easy trucks ($30) the player has $40 after the first day.
- */
-const LEVEL_BONUSES = {
-    1: [{ id: 'first-day', label: 'First day bonus', amount: 10 }],
-};
+// Note: what a truck pays and the one-off bonuses are NOT level data - they live in
+// src/data/economy.json (see src/core/economy.js), so this generator knows nothing about money.
 
 /**
  * Builds the whole level list.
@@ -619,7 +663,6 @@ function generateAll() {
                     pieces: puzzle.pieces,
                     difficulty,
                     difficultyScore: Math.round(puzzle.score * 100) / 100,
-                    reward: REWARD_BY_DIFFICULTY[difficulty],
                 };
             }),
         });
@@ -649,8 +692,7 @@ function formatLevels(levels) {
             lines.push(`        "blocked": ${inline(truck.blocked)},`);
             lines.push(`        "pieces": ${inline(truck.pieces)},`);
             lines.push(`        "difficulty": ${JSON.stringify(truck.difficulty)},`);
-            lines.push(`        "difficultyScore": ${truck.difficultyScore},`);
-            lines.push(`        "reward": ${truck.reward}`);
+            lines.push(`        "difficultyScore": ${truck.difficultyScore}`);
             lines.push(ti < level.trucks.length - 1 ? '      },' : '      }');
         });
         lines.push('    ]');
@@ -664,21 +706,29 @@ function formatLevels(levels) {
 // Shape-gated progression (second data set: levels.shapes.json).
 // ---------------------------------------------------------------------------
 
-/** The simple shapes every level may use: the ones a player reads as plain rectangles. */
-const SIMPLE_SHAPES = ['dot', 'domino_h', 'domino_v', 'tri_i', 'square', 'bar4'];
+/** The shapes available from level 1: just the 1x1 dot and the 2x2 square (everything else is unlocked below). */
+const SIMPLE_SHAPES = ['dot', 'square'];
 
 /**
  * When each irregular shape is introduced. A shape unlocked at level N may be used from
- * level N onwards. Levels 1-3 therefore use only SIMPLE_SHAPES. This is THE shape-progression
+ * level N onwards. Levels 1-3 therefore use only SIMPLE_SHAPES (the dot and the square). This is THE shape-progression
  * plan - edit it and re-run with --shape-gated to change when shapes arrive.
  */
 const SHAPE_UNLOCKS = [
-    { level: 4, shapes: ['tri_l', 'l4'] },
-    { level: 7, shapes: ['t4'] },
-    { level: 10, shapes: ['s4'] },
-    { level: 13, shapes: ['p5'] },
-    { level: 16, shapes: ['plus'] },
-];
+    // Every 3 levels at first...
+    { level: 3, shapes: ['domino_h'] },
+    { level: 6, shapes: ['domino_v'] },
+    { level: 9, shapes: ['tri_i'] },
+    { level: 12, shapes: ['bar4'] },
+    // ...then every 4...
+    { level: 16, shapes: ['tri_l'] },
+    { level: 20, shapes: ['l4'] },
+    { level: 24, shapes: ['t4'] },
+    { level: 28, shapes: ['s4'] },
+    // ...then every 5. From level 38 the whole catalogue (12 shapes) is in play.
+    { level: 33, shapes: ['p5'] },
+    { level: 38, shapes: ['plus'] },
+]; // one new shape at a time
 
 /** How much more likely a newly introduced shape is than usual, so the level that introduces it shows it off. */
 const NEW_SHAPE_BOOST = 3;
@@ -737,8 +787,14 @@ function generateShapeGated(poolSize) {
             const t = targetDifficulty(levelNumber, truckIndex);
             // A seed range of its own, so this data set's randomness is independent of levels.json.
             const rng = makeRng(7000000 + levelNumber * 1000 + truckIndex + 1);
-            const found = findBestPuzzles(t, rng, seen, rules, poolSize);
             const slotName = `level ${levelNumber} truck ${truckIndex + 1}`;
+            let found;
+            try {
+                found = findBestPuzzles(t, rng, seen, rules, poolSize);
+            } catch (error) {
+                // Say WHICH slot could not be filled; the underlying message only knows the difficulty.
+                throw new Error(`${slotName} (allowed: ${allowedShapes.join(', ')}): ${error.message}`);
+            }
             if (found.relaxed) {
                 warnings.push(`${slotName}: solution-count rule relaxed`);
             }
@@ -758,13 +814,12 @@ function generateShapeGated(poolSize) {
                         pieces: puzzle.pieces,
                         difficulty: label,
                         difficultyScore: Math.round(puzzle.score * 100) / 100,
-                        reward: REWARD_BY_DIFFICULTY[label],
                     };
                 });
             return { id: truckId, difficulty: label, puzzles };
         });
 
-        levels.push({ id: levelId, newShapes, allowedShapes, bonuses: LEVEL_BONUSES[levelNumber] ?? [], trucks });
+        levels.push({ id: levelId, newShapes, allowedShapes, trucks });
     }
     return { levels, warnings };
 }
@@ -783,7 +838,6 @@ function formatShapeLevels(levels) {
         lines.push(`    "id": ${JSON.stringify(level.id)},`);
         lines.push(`    "newShapes": ${inline(level.newShapes)},`);
         lines.push(`    "allowedShapes": ${inline(level.allowedShapes)},`);
-        lines.push(`    "bonuses": ${inline(level.bonuses)},`);
         lines.push('    "trucks": [');
         level.trucks.forEach((truck, ti) => {
             lines.push('      {');

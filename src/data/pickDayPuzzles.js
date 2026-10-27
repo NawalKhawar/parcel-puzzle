@@ -45,3 +45,30 @@ export function pickDayPuzzles(level, playNumber = 0) {
     // Stable sort (guaranteed in modern JS), so equal scores keep their slot order.
     return picks.sort((a, b) => a.difficultyScore - b.difficultyScore);
 }
+
+/**
+ * Picks the extra puzzle for an overtime truck: a puzzle of the given tier from the same level's
+ * existing bank, that is not one of the puzzles the player has already played today.
+ *
+ * It draws from EVERY slot of that tier in the level (not just one pool), so there is always a
+ * fresh choice, and it rotates with `playNumber` just like pickDayPuzzles so replaying the day
+ * gives a different overtime truck.
+ *
+ * @param {ShapeLevel} level - the level (day) being played.
+ * @param {string} tier - 'easy' | 'medium' | 'hard': the day's highest tier.
+ * @param {Puzzle[]} dayPuzzles - the puzzles already picked for the day (excluded).
+ * @param {number} [playNumber] - the same rotation counter given to pickDayPuzzles.
+ * @returns {Puzzle}
+ * @throws {Error} if the level has no unused puzzle of that tier.
+ */
+export function pickOvertimePuzzle(level, tier, dayPuzzles, playNumber = 0) {
+    const taken = new Set(dayPuzzles.map((puzzle) => puzzle.id));
+    const candidates = level.trucks
+        .filter((slot) => slot.difficulty === tier)
+        .flatMap((slot) => slot.puzzles)
+        .filter((puzzle) => !taken.has(puzzle.id));
+    if (candidates.length === 0) {
+        throw new Error(`level "${level.id}" has no unused ${tier} puzzle for an overtime truck`);
+    }
+    return candidates[((playNumber % candidates.length) + candidates.length) % candidates.length];
+}

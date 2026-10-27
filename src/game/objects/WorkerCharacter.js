@@ -4,7 +4,7 @@ import { UI_SCALE } from '../uiScale.js';
  * WorkerCharacter.js
  *
  * The little courier who stands beside the truck in PuzzleScene, there mostly for cosiness
- * rather than gameplay. Three poses (assets/worker-neutral.png, worker-happy.png,
+ * rather than gameplay. Three poses (assets/characters/worker-neutral.png, worker-happy.png,
  * worker-celebrate.png - all 480x360 art pixels, the character roughly centred in that canvas):
  *
  *   - neutral   - the default, idle pose, shown throughout a puzzle. It gets a slow "breathing"
@@ -12,7 +12,7 @@ import { UI_SCALE } from '../uiScale.js';
  *   - thinking  - shown for a few seconds when the player has been idle or slow on a puzzle
  *                 (PuzzleScene decides when; see think()), then back to neutral.
  *   - happy     - shown the moment an easy truck is solved.
- *   - happy2    - shown the moment a medium truck is solved (assets/worker-happy2.png).
+ *   - happy2    - shown the moment a medium truck is solved (assets/characters/worker-happy2.png).
  *   - celebrate - shown the moment a hard truck is solved (it earns the biggest reaction).
  *
  * Also draws its own ground shadow - a flattened ellipse, not the truck's trapezoid (a single

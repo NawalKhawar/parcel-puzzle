@@ -11,22 +11,37 @@ parcel-puzzle/
 │   └── level_data.md           Legacy solver-generated level examples (shape vocabulary
 │                                and difficulty ideas only — NOT the runtime level format).
 │
-├── assets/                     The game's art (PNG, drawn at 2x the design size): the 12 piece
-│                                images (named after their shape ids, e.g. plus.png), conveyor-
-│                                belt-dark.png, truck-with-wheels.png (the 9-sliced truck frame),
-│                                truck-shutter.png, start-packing.png, and the reset/pause/hint
-│                                icons.
-│                                Loaded by Preloader through a Vite glob import - each file's
-│                                name (minus .png) is its texture key - so no copying into
-│                                public/ is needed and the files are bundled on build.
+├── assets/                     The game's art and audio (WebP - or PNG - drawn at 2x the design size; MP3),
+│   │                            sorted into subfolders. The folder is for tidiness only: Preloader
+│   │                            loads everything with a Vite glob and uses each file's NAME (minus
+│   │                            .webp / .png / .mp3) as its texture or sound key, so file names must be
+│   │                            unique across all folders (Preloader throws if two collide) and
+│   │                            moving a file between folders never needs a code change.
+│   ├── pieces/                 The 12 piece images, named after their shape ids (plus.png ...).
+│   ├── characters/             The worker poses (worker-neutral/happy/happy2/celebrate/thinking).
+│   ├── truck/                  Truck frame + shutter, conveyor belt, side light, handlebars,
+│   │                           licence plate.
+│   ├── backgrounds/            Warehouse background, title screen, end-of-day clipboard.
+│   ├── ui/                     HUD icons and panels, the Start Packing button, the wood panel.
+│   ├── apartment/              The apartment: apartment-wall.png (448x96), apartment-floor.png
+│   │                           (448x256), and the furniture art as item-<id>.png.
+│   ├── audio/
+│   │   ├── music/              Title and gameplay music.
+│   │   └── sfx/                Pop, level complete, cash register.
+│   └── branding/               Source favicon (the live one is public/favicon.ico).
 │
-├── public/
-│   └── assets/                 Static assets served as-is (images, audio). Referenced via
-│                                Phaser Loader paths like 'assets/foo.png', copied verbatim
-│                                into dist/ on build. (Currently only template leftovers.)
+├── assets-original/            Full-size PNG / 256 kbps masters of everything in assets/, kept from
+│                                before the 2026-10-26 size optimisation (not bundled - Preloader only
+│                                reads assets/). Re-export from here if art needs editing.
+│
+├── public/                     Copied verbatim into dist/: favicon.ico and style.css.
 │
 ├── src/
 │   ├── main.js                 App bootstrap: waits for DOMContentLoaded, starts the Phaser game.
+│   ├── save.js                 The ONLY file that touches localStorage: loadSave() / writeSave(state) /
+│   │                           clearSave(), key "parcel_save_v1", every call in try/catch (never throws). It
+│   │                           knows nothing about the save's contents, so another backend (a platform SDK)
+│   │                           can replace it without changing any game code.
 │   │
 │   ├── core/                   PURE game-rule engine. No Phaser imports allowed here —
 │   │   │                       this is what makes the logic unit-testable and reusable by
@@ -40,14 +55,28 @@ parcel-puzzle/
 │   │   │                       and the game.
 │   │   ├── Grid.js             Board model: dimensions, blocked cells, filled cells;
 │   │   │                       canPlace/place/remove/isComplete.
+│   │   ├── pickReaction.js     Random worker pose on a solved truck, never the same twice in a row.
+│   │   ├── ftueTrail.js        The first-day trail (paycheck -> shop -> apartment, switched off by a skipped tutorial): FTUE_ITEM_ID ('clock') and
+│   │   │                       ftueTrailStage() = 'shop' | 'decorate' | 'free', worked out from what the player owns.
+│   │   ├── saveState.js        The save FORMAT: SAVE_VERSION, defaultSaveState(), and mergeSave(raw) which
+│   │   │                       merges a stored object over the new-game defaults field by field (bad or missing
+│   │   │                       fields fall back; a newer version or a non-save gives null). Includes 'truck' + 'truckLog' (trucks
+│   │   │                       packed in the saved day, kept in agreement). Pure, no storage.
+│   │   ├── economy.js          The game's MONEY RULES as pure functions (config passed in): payForTruck,
+│   │   │                       dayPay, workloadForDay, bonusForDay / claimBonuses (each paid once),
+│   │   │                       promotionRank, hintCost / purchaseHint, overtimeOffer / overtimePay,
+│   │   │                       shopStatus / purchaseItem, save/restore of the economy state, and
+│   │   │                       simulateShopper, promotionRaisePercent and dayStartScreens (which of the
+│   │   │                       promotion / bonus screens a day opens with). Whole dollars only; rounding goes up.
 │   │   ├── Placement.js        Pure helpers: translate a shape to board coords, check
 │   │   │                       bounds/overlap/blocked-cell conflicts.
-│   │   ├── RoomGrid.js         Apartment placement rules: furniture footprints on the floor
-│   │   │                       grid (bounds, no overlap - except onto rugs) and the
-│   │   │                       back-to-front draw order.
-│   │   ├── RoomProjection.js  Apartment 2.5D maths: floor cell <-> screen pixel (exactly
-│   │   │                       invertible), the polygons of a box on the floor, and
-│   │   │                       point-in-polygon picking.
+│   │   ├── roomConfig.js       Apartment size constants: TILE, ROOM_W, ROOM_H, WALL_ROWS, WALL_HANG_ROWS,
+│   │   │                       PIXEL_ART, MAX_HEIGHT_ROWS, HEADROOM_ROWS.
+│   │   ├── RoomLayout.js       Apartment logic on one top-down tile grid (wall strip rows
+│   │   │                       on top, floor below): placement rules (bounds, per-layer
+│   │   │                       overlap - wall / rug / furniture), draw order, picking by
+│   │   │                       sprite bounds, save/load, footprint -> sprite pixel maths,
+│   │   │                       and findNearestValid (where an illegal drop lands instead).
 │   │   └── TrayLayout.js       Conveyor-belt maths: how big the parcels are and where each
 │   │                           goes in the single row - full size with gaps, then a slight
 │   │                           overlap when crowded, then shrinking as a last resort.
@@ -56,42 +85,62 @@ parcel-puzzle/
 │   │   │                       docs/level_data.md format entirely). Shape geometry itself
 │   │   │                       is NOT duplicated here — levels reference shape ids that
 │   │   │                       are defined once, canonically, in core/Shape.js.
-│   │   ├── levels.json         The original 30 levels (days), each a list of 3-6 trucks
+│   │   ├── economy.json        EVERY money number: tier units (easy 2 / medium 3 / hard 7), pay ranks
+│   │   │                       (unit value $5 / $6 / $7 from day 1 / 20 / 40), trucks per day, one-off
+│   │   │                       bonuses (enabled flag; `screen: true` = paid on its own bonus screen before the day, else on the paycheck), hint cost, overtime (flag, day list,
+│   │   │                       multiplier) and the shop price list (price, unlockDay, category, enabled).
+│   │   ├── loadEconomy.js      Validates economy.json (loadEconomy); exports TIER_IDS, SHOP_CATEGORIES.
+│   │   ├── levels.json         The original 50 levels (days), each a list of 3-6 trucks
 │   │   │                       (puzzles): id, rows, cols, blocked cells, piece list,
-│   │   │                       difficulty label + score, reward. GENERATED by scripts/
+│   │   │                       difficulty label + score (no money data). GENERATED by scripts/
 │   │   │                       generate-levels.js. NO LONGER PLAYED by the game - kept as
 │   │   │                       the reference set for the generator, validator and tests.
-│   │   ├── levels.shapes.json  Second puzzle set (800 puzzles: a pool of 5 per truck slot)
-│   │   │                       where shapes are introduced gradually (levels 1-4 simple only,
-│   │   │                       then tri_l+l4 at 5, t4 at 8, s4 at 11, p5 at 14, plus at 17).
+│   │   ├── levels.shapes.json  Second puzzle set (~1200 puzzles: a pool of 5 per truck slot)
+│   │   │                       where shapes are introduced one at a time (dot + square at
+│   │   │                       level 1, then one every 3 levels, then every 4, then every 5: all 12 by level 38).
 │   │   │                       GENERATED (generate-levels.js --shape-gated). THIS is the file
 │   │   │                       the game plays (see pickDayPuzzles.js).
 │   │   ├── levels.schema.md    Human-readable description of the level object shape.
-│   │   ├── apartment.json      Apartment room size + the furniture catalog (footprint,
-│   │   │                       height, colour, flat for rugs).
-│   │   ├── shop.json           The shop's placeholder items (one flat list - the shop only
-│   │   │                       sells apartment items, so there are no tabs).
+│   │   ├── items.json          The furniture catalogue: id, name, footprint {w,h},
+│   │   │                       heightRows, wallMounted, flat (rugs), intoWall (may back into
+│   │   │                       the wall's cleared bottom row - the fridge), sprite key,
+│   │   │                       placeholder colour. Look and floor space only - prices and unlock days
+│   │   │                       are in economy.json. The apartment and the shop both use it.
 │   │   ├── company.json        The employer shown on the end-of-day popup: name (Cozy
 │   │   │                       Cargo) and department.
-│   │   ├── loadApartment.js    Validates apartment.json (loadApartment) and shop.json
-│   │   │                       (loadShop).
+│   │   ├── wallpapers.json     Wall colours: id, name, colour (price / unlock day: economy.json).
+│   │   ├── loadWallpapers.js   Validates wallpapers.json (file order).
+│   │   ├── loadItems.js        Validates items.json (loadItems).
 │   │   ├── loadLevel.js        Loads + validates levels/trucks at runtime (loadTruck,
 │   │   │                       loadLevel, loadLevels, loadShapeLevels, createGridForTruck); throws loudly
 │   │   │                       on malformed data instead of failing silently in-scene.
 │   │   └── pickDayPuzzles.js   Picks one puzzle per truck slot (rotating through each pool on replays) when a day
-│   │                           starts, ordered easiest to hardest.
+│   │                           starts, ordered easiest to hardest; pickOvertimePuzzle picks the extra
+│   │                           overtime truck (highest tier, not already played today).
 │   │
 │   ├── game/                   Phaser-specific code. Everything here MAY import 'phaser'
 │   │   │                       and should translate core/ + data/ into rendered, interactive
 │   │   │                       game objects — it should not contain puzzle-rule logic itself.
 │   │   ├── main.js             Phaser.Game config (scale, scenes list) and the StartGame()
 │   │   │                       factory consumed by src/main.js.
+│   │   ├── economy.js          The validated economy config (one shared copy) and the registry-backed
+│   │   │                       economy state: getEconomyState / setEconomyState / resetEconomy / getMoney.
+│   │   ├── dayFlow.js          startDay: the screens between Next Day and gameplay (promotion, then bonus), one
+│   │   │                       scene each, then the day's first truck.
+│   │   ├── fonts.css           The Fredoka @font-face rules (Latin 400 / 600 / 700, .woff2 only), imported by Preloader.
+│   │   ├── progress.js         Save / load glue: initSave (Boot, once), hasSave, commitTruck (a truck was packed),
+│   │   │                       commitDay (end of a workday: saves the NEXT day), saveProgress (shop purchase /
+│   │   │                       apartment change), saveMute (rewrites the last saved state with new mute
+│   │   │                       choices), startNewGame, continueGame (resumes at the next unpacked truck). A save
+│   │   │                       always describes the START of a truck; the pay of a won-but-uncommitted truck
+│   │   │                       (last truck / overtime) is held back, so a reload never pays it twice.
 │   │   ├── uiScale.js          Exports UI_SCALE (devicePixelRatio, capped at 2), used to
 │   │   │                       multiply every pixel constant in src/game/ so the canvas
 │   │   │                       stays sharp on full-screen/high-DPI displays (Scale.FIT only
 │   │   │                       ever resizes the canvas's CSS size, never its pixel buffer).
 │   │   ├── scenes/
-│   │   │   ├── Boot.js         Minimal first scene; kicks off the Preloader.
+│   │   │   ├── Boot.js         Minimal first scene (loads nothing); kicks off the Preloader, whose
+│   │   │   │                   loading screen is a plain cream colour with a brown progress bar.
 │   │   │   ├── Preloader.js    Loads the art from assets/, then starts TitleScene.
 │   │   │   ├── TitleScene.js   Title screen: the game's name + the Start Packing
 │   │   │   │                   button image, which starts level 1, truck 1. No other items.
@@ -104,33 +153,65 @@ parcel-puzzle/
 │   │   │   │                   the shutter that closes the truck on a win, owns drag/snap, win
 │   │   │   │                   detection, the coin HUD with the Reset/Pause/Hint icon
 │   │   │   │                   buttons, dragging placed pieces off the board, the "Level N ·
-│   │   │   │                   Truck k/total" header, and the day's running totals (kept
-│   │   │   │                   in the Phaser registry, since a fresh PuzzleScene instance
-│   │   │   │                   is created per truck).
-│   │   │   ├── DayCompleteScene.js  End-of-day popup after a level's last truck: trucks
-│   │   │   │                   completed, truck earnings, bonuses and the total earned, under the company header
-│   │   │   │                   (company.json), and Shop / Decorate / Next Day
-│   │   │   │                   buttons (Next Day becomes Finish after the last level).
-│   │   │   ├── ShopScene.js    The shop: one grid of placeholder apartment-item boxes,
-│   │   │   │                   from shop.json. Back returns to the day-complete popup.
-│   │   │   ├── ApartmentScene.js  The apartment (the popup's "Decorate" button): a 2.5D
-│   │   │   │                   room with a flat back wall; drag furniture from the
-│   │   │   │                   inventory onto the grid with a green/red ghost, pick it up
-│   │   │   │                   again, or drag it back to the inventory. Layout is kept in
+│   │   │   │                   Truck k/total" header, pays each truck from the economy rules,
+│   │   │   │                   offers overtime after the last truck on the configured days,
+│   │   │   │                   pays one-off bonuses at the end of the day, and sells extra
+│   │   │   │                   hints (money only) once the day's free hint is spent. The wallet and
+│   │   │   │                   the day's truck log live in the Phaser registry, since a fresh
+│   │   │   │                   PuzzleScene instance is created per truck.
+│   │   │   ├── DayCompleteScene.js  The paycheck after a level's last truck: one line per truck
+│   │   │   │                   (tier + amount, overtime marked), each bonus on its own line, a
+│   │   │   │                   promotion notice, the total and the new balance, under the company
+│   │   │   │                   header (company.json), and Shop / Decorate / Next Day buttons (Next
+│   │   │   │                   Day becomes Finish after the last level, and goes via the promotion
+│   │   │   │                   screen when the next day brings a raise).
+│   │   │   ├── PromotionScene.js  The promotion screen (assets/promotion.png, before days 20 and 40): the
+│   │   │   │                   raise (20% / 40% of starting pay) written in the art's blank; fanfare;
+│   │   │   │                   lower-right arrow carries on.
+│   │   │   ├── BonusScene.js   The bonus screen (assets/bonus.png, before days 7 and 30): pays the one-time
+│   │   │   │                   bonus and writes the amount in the art's blank; fanfare; arrow carries on.
+│   │   │   ├── ShopScene.js    The shop: the shop list from economy.json as pages of horizontal item
+│   │   │   │                   cards (unlocked first, then dimmed "Unlocks Day N" cards), flipped
+│   │   │   │                   with the on-screen or keyboard left/right arrows. Clicking a card BUYS
+│   │   │   │                   it (cash register); owned cards read "Owned". Back returns to the paycheck - or, when opened
+│   │   │   │                   from the pause menu (data.returnTo), to the truck that was being played.
+│   │   │   └── ApartmentScene.js  The apartment (the popup's "Decorate" button): a
+│   │   │   │                   top-down 3/4 tile room (wall strip above a square-tile
+│   │   │   │                   floor) drawn at a whole-number scale; drag furniture from
+│   │   │   │                   the inventory (only items the player has bought) with a green/red ghost, tap a placed item to
+│   │   │   │                   put it away, undo/redo/clear. Layout is kept in
 │   │   │   │                   the registry ('apartmentLayout').
-│   │   │   └── GameOver.js     Existing template scene — repurpose or remove once
-│   │   │                       it is not used.
 │   │   └── objects/
 │   │       ├── GridView.js     Draws a Grid (core/Grid.js) as cells on screen: open
 │   │       │                   cells are the truck's grey with darker grid lines, so the grid
 │   │       │                   looks baked into the truck; blocked cell styling; also owns ghost/snap-preview
 │   │       │                   rendering for a piece being dragged and the pulsing
 │   │       │                   hint highlight (showHint/clearHint).
-│   │       ├── FurnitureView.js  Draws one piece of furniture as a placeholder 3D box
-│   │       │                   (faces from core/RoomProjection.js) plus a name label.
-│   │       ├── NewPieceIntro.js  The "New piece!" popup at the start of a level that
-│   │       │                   introduces shapes: pops in with overshoot, holds ~2 s, shrinks
-│   │       │                   away, blocking input meanwhile.
+│   │       ├── artBounds.js    Finds the visible rectangle of an image (art is centred on a bigger
+│   │       │                   canvas): used to stand apartment items on their floor tile and to fit
+│   │       │                   shop/inventory icons to their square (addFittedIcon).
+│   │       ├── money.js        Money display: "[note icon] 40" (addMoneyText) instead of a "$" sign,
+│   │       │                   plus the small smoothed copy of the big currency note art.
+│   │       ├── MoneyHud.js     The money counter panel (gameplay HUD and shop, the shop's larger).
+│   │       ├── DayStartPopup.js  The popup opening each day (replaces NewPieceIntro): day number, truck count,
+│   │       │                   a rotating action line, any new pieces, and the boss head.
+│   │       ├── BossPanel.js    The speech panel (character head + message + optional Next button), sized to fit its text; vertical or compact horizontal layout, any head.
+│   │       ├── OfferPopup.js   The boss's two popups over the puzzle: the overtime offer ("One more truck?
+│   │       │                   Time and a half.") and the extra-hint offer (ad = free / buy with money).
+│   │       ├── fullScreenArt.js  addCoverArt (a picture fitted to cover the canvas, text placed by fractions of
+│   │       │                   the picture) and addProceedButton (the lower-right next-page arrow) for the
+│   │       │                   promotion and bonus screens.
+│   │       ├── pillButton.js   addPillButton: the rounded orange text button used by those popups and the promotion screen.
+│   │       ├── cornerTip.js    A short corner popup from a character (worker head), for the shop / apartment tips.
+│   │       ├── pulse.js        addPulse: a steady grow-and-shrink on a button, pausing on hover (leads the player to Shop, Decorate).
+│   │       ├── FtueGuide.js    First-day guide for the very first puzzle: boss panel beside the truck, Next button,
+│   │       │                   then highlights a parcel + its spot, then a 3s "not bad" message and it leaves.
+│   │       ├── skipButton.js   addSkipButton: the "Skip >>" picture button a returning player uses to skip the whole tutorial.
+│   │       ├── GuideCursor.js  The pointing-hand cursor (assets/ui/hand-cursor.webp) that SHOWS the player what to do: playDrag
+│   │       │                   (press, drag, release, loop) and playTap (press, bounce, fade, loop). Only a picture - never touches
+│   │       │                   the real parcels / buttons / furniture. Used by the first-day guide, paycheck and apartment.
+│   │       ├── audioToggle.js  Square music/SFX mute toggle for the pause menu (drawn note / speaker icon).
+│   │       ├── imageButton.js  addImageButton: a picture button sized by design height (assets/ui/button-*).
 │   │       ├── pressFeedback.js  Click feedback for any button: squashes when pressed,
 │   │       │                   springs back on release; optional short delay so scene-
 │   │       │                   changing buttons show it before they act.
@@ -138,7 +219,7 @@ parcel-puzzle/
 │   │                           pointer input and drag state (not placement legality). Placed
 │   │                           pieces stay draggable, with an exact-shape hit area.
 │   │
-│   (Shop purchasing and real furniture/decor items beyond the placeholders remain
+│   (Real art for the six luxury placeholder items, and a real rewarded-ad provider, remain
 │    future work - see ROADMAP.md.)
 │
 ├── scripts/                    Node CLI tools. validate-levels.js/generate-levels.js consume
@@ -154,6 +235,8 @@ parcel-puzzle/
 │   │                           (seeded/deterministic). With --shape-gated it instead builds
 │   │                           levels.shapes.json (shape unlock plan, pools per slot). Uses
 │   │                           the solver to check each puzzle.
+│   ├── simulate-economy.js     Plays economy.json forward for a model player (no Phaser): pay per
+│   │                           rank, 50-day totals and the day each shop item is bought.
 │   ├── screenshot.js           Dev/QA helper: launches the dev server, drives headless
 │   │                           Chromium (Playwright) through the boot sequence, clicks
 │   │                           Play, saves title + puzzle screenshots, reports console
@@ -167,13 +250,19 @@ parcel-puzzle/
 ├── tests/                      Unit & regression tests, run via `npm test` (Node's
 │   │                           built-in `node --test` — see TRACKER.md's Milestone 8
 │   │                           decision log for why that was chosen over vitest/etc).
-│   ├── core/                   Tests for Shape/Grid/Placement, RoomGrid and RoomProjection.
+│   ├── core/                   Tests for Shape/Grid/Placement, RoomLayout and economy (pay by rank, day pay,
+│   │                           bonuses once across save/load, hints, overtime, shop rules, the buy-out
+│   │                           simulation, whole-dollar checks) and saveState (what a damaged, partial or
+│   │                           too-new save turns into) and ftueTrail (which step of the first-day trail a
+│   │                           player is on, and that an unbuyable clock skips it).
 │   ├── solver/                 Solver micro-tests + a check that every shipped truck solves.
 │   └── data/                   loadLevel validation tests + checks that levels.json matches
-│                               the design spec (30 levels, trucks per level, difficulty ramp);
-│                               apartment/shop data validation; the shape-gated pool
+│                               the design spec (50 levels, trucks per level, difficulty ramp);
+│                               items.json validation; economy.json validation, the shop vs the art
+│                               files and the levels vs the workload table; the shape-gated pool
 │                               (unlock levels, no early shapes, pool size, solvability);
-│                               pickDayPuzzles (one per slot, never getting easier).
+│                               pickDayPuzzles (one per slot, never getting easier); the first-day trail item
+│                               (the clock is on sale from day 1, affordable from day 1's pay, and fits on the wall).
 │
 ├── vite/
 │   ├── config.dev.mjs          Dev server Vite config.

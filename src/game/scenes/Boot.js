@@ -1,5 +1,13 @@
 import { Scene } from 'phaser';
+import { initSave } from '../progress.js';
 
+/**
+ * Boot.js
+ *
+ * The very first scene. It has nothing to load (the loading screen is a plain colour and a progress
+ * bar, see Preloader), so it reads the saved game - once, before anything else can ask whether there
+ * is one (the title screen's Continue button) - and hands straight over to the Preloader.
+ */
 export class Boot extends Scene
 {
     constructor ()
@@ -7,16 +15,9 @@ export class Boot extends Scene
         super('Boot');
     }
 
-    preload ()
-    {
-        //  The Boot Scene is typically used to load in any assets you require for your Preloader, such as a game logo or background.
-        //  The smaller the file size of the assets, the better, as the Boot Scene itself has no preloader.
-
-        this.load.image('background', 'assets/bg.png');
-    }
-
     create ()
     {
+        initSave();
         this.scene.start('Preloader');
     }
 }

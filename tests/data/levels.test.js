@@ -3,10 +3,9 @@
  *
  * Two groups of tests:
  *   1. loadLevel.js validation rules, using small hand-built levels/trucks.
- *   2. The shipped src/data/levels.json against the game design spec: 30 levels (days);
- *      level 1 has 3 easy trucks; levels 2-7 have 4 (2 easy, 2 medium); levels 8-12 have
- *      5 (2 easy, 2 medium, 1 hard); levels 13-30 have 6 (2 easy, 2 medium, 2 hard); difficulty never drops within a
- *      level. If someone regenerates or hand-edits the data and breaks that shape, these
+ *   2. The shipped src/data/levels.json against the game design spec: 50 levels (days) -
+ *      1: 3E; 2-5: 4E; 6-14: 3E+1M; 15-19: 2E+2M; 20-25: 3E+2M; 26-30: 2E+3M; 31-39: 2E+2M+1H;
+ *      40-50: 2E+2M+2H (E/M/H = easy/medium/hard) - and difficulty never drops within a level. If someone regenerates or hand-edits the data and breaks that shape, these
  *      fail with a message naming the level.
  */
 import { test, describe } from 'node:test';
@@ -36,10 +35,9 @@ describe('loadLevel.js - truck validation', () => {
         assert.throws(() => loadTruck(validTruck({ rows: 2, blocked: [[0, 0], [0, 0]], pieces: ['dot', 'dot'] })), /more than once/);
     });
 
-    test('rejects a bad difficulty, difficultyScore or reward', () => {
+    test('rejects a bad difficulty or difficultyScore', () => {
         assert.throws(() => loadTruck(validTruck({ difficulty: 'brutal' })), /difficulty/);
         assert.throws(() => loadTruck(validTruck({ difficultyScore: 1.5 })), /difficultyScore/);
-        assert.throws(() => loadTruck(validTruck({ reward: 0 })), /reward/);
     });
 });
 
@@ -72,39 +70,32 @@ describe('shipped levels.json matches the game design spec', () => {
     const levels = loadLevels(levelsRaw);
     const rank = { easy: 0, medium: 1, hard: 2 };
 
-    test('there are exactly 30 levels', () => {
-        assert.equal(levels.length, 30);
+    test('there are exactly 50 levels', () => {
+        assert.equal(levels.length, 50);
     });
 
-    // Expected difficulty labels per level, in play order.
-    const expectedLabels = (levelNumber) => {
-        if (levelNumber === 1) return ['easy', 'easy', 'easy'];
-        if (levelNumber <= 7) return ['easy', 'easy', 'medium', 'medium'];
-        if (levelNumber <= 12) return ['easy', 'easy', 'medium', 'medium', 'hard'];
-        return ['easy', 'easy', 'medium', 'medium', 'hard', 'hard'];
-    };
+    // The level plan: [first level, last level, labels in play order].
+    const E = 'easy';
+    const M = 'medium';
+    const H = 'hard';
+    const PLAN = [
+        [1, 1, [E, E, E]],
+        [2, 5, [E, E, E, E]],
+        [6, 14, [E, E, E, M]],
+        [15, 19, [E, E, M, M]],
+        [20, 25, [E, E, E, M, M]],
+        [26, 30, [E, E, M, M, M]],
+        [31, 39, [E, E, M, M, H]],
+        [40, 50, [E, E, M, M, H, H]],
+    ];
 
-    test('level 1 has 3 easy trucks', () => {
-        assert.deepEqual(levels[0].trucks.map((t) => t.difficulty), expectedLabels(1));
-    });
-
-    test('levels 2-7 have 4 trucks: 2 easy then 2 medium', () => {
-        for (let n = 2; n <= 7; n++) {
-            assert.deepEqual(levels[n - 1].trucks.map((t) => t.difficulty), expectedLabels(n), `level ${n}`);
-        }
-    });
-
-    test('levels 8-12 have 5 trucks: 2 easy, 2 medium, 1 hard', () => {
-        for (let n = 8; n <= 12; n++) {
-            assert.deepEqual(levels[n - 1].trucks.map((t) => t.difficulty), expectedLabels(n), `level ${n}`);
-        }
-    });
-
-    test('levels 13-30 have 6 trucks: 2 easy, 2 medium, 2 hard', () => {
-        for (let n = 13; n <= 30; n++) {
-            assert.deepEqual(levels[n - 1].trucks.map((t) => t.difficulty), expectedLabels(n), `level ${n}`);
-        }
-    });
+    for (const [first, last, labels] of PLAN) {
+        test(`levels ${first}-${last} have ${labels.length} trucks: ${labels.map((l) => l[0].toUpperCase()).join('')}`, () => {
+            for (let n = first; n <= last; n++) {
+                assert.deepEqual(levels[n - 1].trucks.map((t) => t.difficulty), labels, `level ${n}`);
+            }
+        });
+    }
 
     test('difficulty never decreases within a level (labels and scores)', () => {
         for (const level of levels) {
@@ -119,7 +110,9 @@ describe('shipped levels.json matches the game design spec', () => {
 
     test('later levels are harder overall than early ones (average score trends upward)', () => {
         const avg = (level) => level.trucks.reduce((sum, t) => sum + t.difficultyScore, 0) / level.trucks.length;
-        assert.ok(avg(levels[29]) > avg(levels[7]), 'level 30 should average harder than level 8');
+        assert.ok(avg(levels[49]) > avg(levels[29]), 'level 50 should average harder than level 30');
+        assert.ok(avg(levels[29]) > avg(levels[14]), 'level 30 should average harder than level 15');
+        assert.ok(avg(levels[14]) > avg(levels[7]), 'level 15 should average harder than level 8');
         assert.ok(avg(levels[7]) > avg(levels[1]), 'level 8 should average harder than level 2');
         assert.ok(avg(levels[1]) > avg(levels[0]), 'level 2 should average harder than level 1');
     });
@@ -132,10 +125,10 @@ describe('shipped levels.json matches the game design spec', () => {
         }
     });
 
-    test('every truck has a positive integer reward', () => {
+    test('no truck carries a reward: pay comes from economy.json', () => {
         for (const level of levels) {
             for (const truck of level.trucks) {
-                assert.ok(Number.isInteger(truck.reward) && truck.reward > 0, `${truck.id} needs a reward`);
+                assert.equal(truck.reward, undefined, `${truck.id} should not have a reward`);
             }
         }
     });

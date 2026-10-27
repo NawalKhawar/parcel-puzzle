@@ -1,10 +1,10 @@
 import { Boot } from './scenes/Boot';
-import { Game as MainGame } from './scenes/Game';
-import { GameOver } from './scenes/GameOver';
 import { Preloader } from './scenes/Preloader';
 import { PuzzleScene } from './scenes/PuzzleScene';
 import { TitleScene } from './scenes/TitleScene';
 import { DayCompleteScene } from './scenes/DayCompleteScene';
+import { PromotionScene } from './scenes/PromotionScene';
+import { BonusScene } from './scenes/BonusScene';
 import { ShopScene } from './scenes/ShopScene';
 import { ApartmentScene } from './scenes/ApartmentScene';
 import { UI_SCALE } from './uiScale.js';
@@ -33,10 +33,10 @@ const config = {
         TitleScene,
         PuzzleScene,
         DayCompleteScene,
+        PromotionScene,
+        BonusScene,
         ShopScene,
-        ApartmentScene,
-        MainGame,
-        GameOver
+        ApartmentScene
     ]
 };
 

@@ -20,7 +20,7 @@ import { UI_SCALE } from '../uiScale.js';
  * highlight of the cells on the BOARD itself instead, via showGhost().
  */
 
-/** The board is drawn straight onto the truck's grey interior (assets/truck-with-wheels.png), so
+/** The board is drawn straight onto the truck's grey interior (assets/truck/truck-with-wheels.png), so
  *  open cells are exactly that grey with slightly darker grid lines - it looks as if the grid
  *  is part of the truck. 0x777975 is the grey sampled from the artwork. */
 const OPEN_CELL_FILL_COLOR = 0x777975;

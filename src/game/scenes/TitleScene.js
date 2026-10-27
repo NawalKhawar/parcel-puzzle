@@ -1,15 +1,23 @@
 import { Geom, Scene } from 'phaser';
 import { makePressable } from '../objects/pressFeedback.js';
+import { addImageButton } from '../objects/imageButton.js';
+import { showConfirm } from '../objects/OfferPopup.js';
 import { playBgm, TITLE_BGM_VOLUME } from '../audio.js';
 import { UI_SCALE } from '../uiScale.js';
+import { hasSave, startNewGame, continueGame } from '../progress.js';
 
 /**
  * TitleScene.js
  *
- * The first screen the player sees: the full-art title background (assets/title-bg.png, which
+ * The first screen the player sees: the full-art title background (assets/backgrounds/title-bg.png, which
  * has the "Cozy Couriers" logo and two characters baked in, so no separate text title is drawn
- * over it) and a single "Start Packing" button. Pressing it goes straight into truck 1 of
- * level 1 (PuzzleScene) - there is deliberately no menu, level select, or settings here yet.
+ * over it) and the start button(s). There is deliberately no level select or settings here yet.
+ *
+ *   - No saved game (a first-time player): the single painted "Start Packing" button, which starts a
+ *     new game straight into truck 1 of level 1 (PuzzleScene).
+ *   - A saved game: two picture buttons, "Continue" (carries on where the save left off) and "New
+ *     Game", which asks Yes / No first because it erases the save. A returning player who says Yes is
+ *     offered a Skip button for the tutorial (see progress.startNewGame).
  */
 
 /** Where the button sits, as a fraction of the screen (0-1 from the top-left). title-bg.png
@@ -43,23 +51,78 @@ export class TitleScene extends Scene
         const buttonX = this.scale.width * BUTTON_X_FRACTION;
         const buttonY = this.scale.height * BUTTON_Y_FRACTION;
 
-        // The button art (assets/start-packing.png, 2048x768) is a pill with a soft glow around
-        // it. Shown at 390x146 design pixels the pill itself is about 375x88. Only the pill
-        // should respond to clicks, not the glow, so the clickable area is the pill's rectangle
-        // in the image's own pixel coordinates (measured from the art's own opaque pixels).
+        if (hasSave())
+        {
+            this.addSaveMenu(buttonX, buttonY);
+        }
+        else
+        {
+            this.addStartButton(buttonX, buttonY);
+        }
+    }
+
+    /**
+     * The painted "Start Packing" button (no saved game): starts a new game.
+     *
+     * @param {number} x - centre x, screen pixels.
+     * @param {number} y - centre y, screen pixels.
+     */
+    addStartButton (x, y)
+    {
+        // The button art (assets/ui/start-packing.webp, 1024x384 - half the original 2048x768 master)
+        // is a pill with a soft glow around it. Shown at 390x146 design pixels the pill itself is
+        // about 375x88. Only the pill should respond to clicks, not the glow, so the clickable area
+        // is the pill's rectangle in the image's own pixel coordinates (measured from the art's
+        // opaque pixels; halve it again if the art is ever shrunk further).
         const playButton = this.add
-            .image(buttonX, buttonY, 'start-packing')
+            .image(x, y, 'start-packing')
             .setDisplaySize(390 * UI_SCALE, 146 * UI_SCALE)
-            .setInteractive(new Geom.Rectangle(20, 132, 2006, 496), Geom.Rectangle.Contains);
+            .setInteractive(new Geom.Rectangle(10, 66, 1003, 248), Geom.Rectangle.Contains);
         playButton.input.cursor = 'pointer';
 
-        makePressable(this, playButton, () => {
-            // A brand-new game starts with an empty wallet. ('totalEarned' is the all-time
-            // running total; it is never reset between days, only here.) PuzzleScene
-            // resets the per-day totals itself whenever it starts truck 0.
-            this.registry.set('totalEarned', 0);
-            this.registry.set('apartmentLayout', {}); // ...and an empty apartment.
-            this.scene.start('PuzzleScene', { levelIndex: 0, truckIndex: 0 });
-        }, { delay: 140 });
+        makePressable(this, playButton, () => this.beginNewGame(false), { delay: 140 });
+    }
+
+    /**
+     * The Continue / New Game pair (a saved game exists), stacked in the same gap in the art the
+     * single button uses. Both are picture buttons of the same height, so they look like a set.
+     *
+     * @param {number} x - centre x of the pair, screen pixels.
+     * @param {number} y - centre y of the pair, screen pixels.
+     */
+    addSaveMenu (x, y)
+    {
+        const S = UI_SCALE;
+        const height = 108; // design px
+        const rowOffset = 62 * S; // each row sits this far above / below the centre
+        y += 12 * S; // nudged down a little so the larger buttons stay clear of the logo
+
+        const continueButton = addImageButton(this, x, y - rowOffset, 'button-continue', height);
+        const newGameButton = addImageButton(this, x, y + rowOffset, 'button-new-game', height);
+
+        makePressable(this, continueButton, () => continueGame(this), { delay: 140 });
+
+        // New Game erases the save, so ask first. No simply closes the question.
+        makePressable(this, newGameButton, () => {
+            showConfirm(this, {
+                title: 'Start a new game?',
+                subtitle: 'Your saved progress will be erased.',
+                onYes: () => this.beginNewGame(true),
+            });
+        });
+    }
+
+    /**
+     * Starts a brand-new game: erases any save, resets all progress (wallet, bonuses, items, apartment,
+     * tutorials - see progress.startNewGame) and goes into truck 1 of level 1. PuzzleScene resets
+     * the per-day totals itself whenever it starts truck 0.
+     *
+     * @param {boolean} returning - the player had a save and chose to replace it: they get a Skip
+     *   button for the tutorial. (A first-time player does not.)
+     */
+    beginNewGame (returning)
+    {
+        startNewGame(this.registry, { returning });
+        this.scene.start('PuzzleScene', { levelIndex: 0, truckIndex: 0 });
     }
 }

@@ -25,7 +25,6 @@ import { isKnownShape, getShapeCellCount } from '../core/Shape.js';
  * @property {string[]} pieces
  * @property {'easy' | 'medium' | 'hard'} [difficulty]
  * @property {number} [difficultyScore]
- * @property {number} [reward]
  */
 
 /**
@@ -106,10 +105,7 @@ export function loadTruck(raw) {
     if (raw.difficultyScore !== undefined && !(typeof raw.difficultyScore === 'number' && raw.difficultyScore >= 0 && raw.difficultyScore <= 1)) {
         throw new Error(`${label}: "difficultyScore", if present, must be a number between 0 and 1 (got ${JSON.stringify(raw.difficultyScore)})`);
     }
-    if (raw.reward !== undefined && (!Number.isInteger(raw.reward) || raw.reward <= 0)) {
-        throw new Error(`${label}: "reward", if present, must be a positive integer (got ${JSON.stringify(raw.reward)})`);
-    }
-
+    // What a truck pays is not level data: it comes from economy.json by difficulty and day.
     return raw;
 }
 
@@ -181,8 +177,6 @@ export function loadLevels(rawLevels) {
  * @property {string} id
  * @property {string[]} newShapes - shapes introduced at this level (usually empty).
  * @property {string[]} allowedShapes - every shape any puzzle in this level may use.
- * @property {Array<{id: string, label: string, amount: number}>} [bonuses] - one-off bonuses paid
- *   at the end of the level (e.g. a first-day bonus), shown on the end-of-day popup.
  * @property {Array<{id: string, difficulty: 'easy' | 'medium' | 'hard', puzzles: RawTruck[]}>} trucks -
  *   each truck is a SLOT holding a pool of alternative puzzles of that difficulty.
  */
@@ -235,19 +229,6 @@ export function loadShapeLevels(rawLevels) {
         for (const shapeId of level.newShapes) {
             if (!level.allowedShapes.includes(shapeId)) {
                 throw new Error(`${levelLabel}: new shape "${shapeId}" must also be in "allowedShapes"`);
-            }
-        }
-        if (level.bonuses !== undefined) {
-            if (!Array.isArray(level.bonuses)) {
-                throw new Error(`${levelLabel}: "bonuses", if present, must be an array`);
-            }
-            for (const bonus of level.bonuses) {
-                if (!bonus || typeof bonus.label !== 'string' || bonus.label.length === 0) {
-                    throw new Error(`${levelLabel}: every bonus needs a non-empty "label" (got ${JSON.stringify(bonus)})`);
-                }
-                if (!Number.isInteger(bonus.amount) || bonus.amount <= 0) {
-                    throw new Error(`${levelLabel}: bonus "${bonus.label}" needs a positive integer "amount" (got ${JSON.stringify(bonus.amount)})`);
-                }
             }
         }
         if (!Array.isArray(level.trucks) || level.trucks.length === 0) {

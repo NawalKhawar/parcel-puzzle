@@ -1,17 +1,31 @@
 import { Scene } from 'phaser';
 
 import { loadShapeLevels, createGridForTruck } from '../../data/loadLevel.js';
-import { pickDayPuzzles } from '../../data/pickDayPuzzles.js';
+import { pickDayPuzzles, pickOvertimePuzzle } from '../../data/pickDayPuzzles.js';
 import { findHint } from '../../core/Solver.js';
+import { payForTruck, overtimePay, overtimeOffer, claimBonuses, addMoney, promotionRank, purchaseHint, hintCost } from '../../core/economy.js';
+import { economy, getEconomyState, setEconomyState } from '../economy.js';
+import { commitTruck, commitDay, saveMute, isTutorialSkippable, skipTutorial } from '../progress.js';
+import { addSkipButton } from '../objects/skipButton.js';
+import { showOvertimeOffer, showHintOffer, showConfirm } from '../objects/OfferPopup.js';
+import { getShapeCells } from '../../core/Shape.js';
 import { computeTrayLayout } from '../../core/TrayLayout.js';
 import shapeLevelsRaw from '../../data/levels.shapes.json';
 import { GridView } from '../objects/GridView.js';
 import { PieceView } from '../objects/PieceView.js';
-import { showNewPieceIntro } from '../objects/NewPieceIntro.js';
+import { showDayStartPopup } from '../objects/DayStartPopup.js';
+import { FtueGuide } from '../objects/FtueGuide.js';
+import { GuideCursor } from '../objects/GuideCursor.js';
+import { BossPanel } from '../objects/BossPanel.js';
+import { pickReaction } from '../../core/pickReaction.js';
 import { WorkerCharacter } from '../objects/WorkerCharacter.js';
+import { MoneyHud } from '../objects/MoneyHud.js';
+import { addMoneyText } from '../objects/money.js';
 import { makePressable } from '../objects/pressFeedback.js';
+import { addImageButton } from '../objects/imageButton.js';
+import { addAudioToggle } from '../objects/audioToggle.js';
 import { UI_SCALE } from '../uiScale.js';
-import { playSfx, playBgm, GAMEPLAY_BGM_VOLUME } from '../audio.js';
+import { playSfx, playBgm, GAMEPLAY_BGM_VOLUME, isMusicMuted, isSfxMuted, setMusicMuted, setSfxMuted } from '../audio.js';
 import { addUiPanel } from '../objects/uiPanel.js';
 
 /**
@@ -53,23 +67,27 @@ import { addUiPanel } from '../objects/uiPanel.js';
  * Game structure (see docs/game_concept.pdf's Daily Loop): the game is a list of LEVELS
  * (each one in-game day), and each level holds several TRUCKS (one packing puzzle
  * each). This scene is started with { levelIndex, truckIndex } and plays that one truck.
- * Completing a truck earns its `reward` in coins, added to running totals kept in
- * Phaser's cross-scene Data Manager (`this.registry`) so they survive the "stop this
- * scene, start a fresh one for the next truck" restart pattern: 'dayTrucksCompleted' /
- * 'dayEarned' (reset whenever truck 0 of a level begins - see init()) and 'totalEarned',
- * the all-time pay count, which is NOT reset between days (only TitleScene's Play
- * resets it). The coin HUD shows that all-time total (createHud()); finishing a truck
- * that isn't the day's last goes straight on to the next truck, while the day's last shows
- * DayCompleteScene (see handleWin()), which offers Shop / Decorate / Next Day.
+ * Completing a truck pays what the economy rules say for its tier and the day
+ * (core/economy.js, numbers in data/economy.json - nothing is stored in the level data). The money
+ * lives in the player's economy state (game/economy.js) in Phaser's cross-scene Data Manager
+ * (`this.registry`) so it survives the "stop this scene, start a fresh one for the next truck"
+ * restart pattern; 'dayTruckLog' (one line per truck packed today, reset whenever truck 0 of a
+ * level begins - see init()) feeds the paycheck. The coin HUD shows the wallet (createHud());
+ * finishing a truck that isn't the day's last goes straight on to the next truck. After the day's
+ * last truck, on the configured days, the boss offers an OVERTIME truck (offerOvertime()): taking it
+ * plays one more truck of the day's highest tier at time and a half. Then finishDay() pays the
+ * day's one-off bonuses and shows DayCompleteScene (the paycheck), which offers Shop / Decorate /
+ * Next Day.
  *
  * From the second level onwards a Hint button is shown (createHud()): pressing it
  * highlights, on the board, the cells where one piece belongs (useHint(), built on
- * core/Solver.findHint) and fades the button out - one hint per truck. The hint only
- * nudges: it never places, moves or removes anything. The highlight stays until the
- * right piece is actually sitting there (see refreshHint()).
+ * core/Solver.findHint) - the first hint of each PUZZLE (truck) is free. Once it is spent the badge shows
+ * a plus and the button offers another for in-game money (see offerExtraHint()). A hint only nudges: it never places, moves or removes anything, and never
+ * changes what the truck pays. The highlight stays until the right piece is actually sitting there
+ * (see refreshHint()).
  *
  * On the first truck of a level that introduces new shapes, a "New piece!" popup shows (see
- * objects/NewPieceIntro.js) before the player can start.
+ * objects/DayStartPopup.js) before the player can start.
  */
 
 /** A single cell size is used for both the board and the tray so a piece doesn't change
@@ -94,7 +112,7 @@ const BOARD_MAX_HEIGHT = 360 * UI_SCALE;
 const ART_SCALE = UI_SCALE / 2;
 
 /**
- * THE CONVEYOR BELT (assets/conveyor-belt-dark.png, 2560x800 art pixels).
+ * THE CONVEYOR BELT (assets/truck/conveyor-belt-dark.png, 2560x800 art pixels).
  *
  * It fills the whole lower band of the screen: the full 1280 design width, and a height of at
  * most BELT_MAX_HEIGHT (230) so the biggest truck still fits above it. If the artwork's own
@@ -126,7 +144,7 @@ const TRAY_MIN_RELATIVE_SCALE = 0.5;
 const TRAY_MAX_HEIGHT_FRACTION = 0.9;
 
 /**
- * THE TRUCK (assets/truck-with-wheels.png, 912x984 art pixels): a frame around a grey opening,
+ * THE TRUCK (assets/truck/truck-with-wheels.png, 912x984 art pixels): a frame around a grey opening,
  * with wheels under it. It is stretched to fit each board with a 9-slice: the four margins below
  * (in art pixels) never stretch - they hold the corners, bumper, tail lights and wheels - while
  * the plain strips between them stretch to make the frame as wide and tall as the board needs.
@@ -143,7 +161,7 @@ const TRUCK_TOP_MARGIN = 16 * UI_SCALE;
 
 /**
  * The soft shadow the bumper casts on the tops of the wheels, so they look tucked under the truck.
- * Measured on assets/truck-with-wheels.png (art pixels): the bumper ends 74 px above the image's
+ * Measured on assets/truck/truck-with-wheels.png (art pixels): the bumper ends 74 px above the image's
  * bottom edge, the left wheel spans x 24-95 and the right wheel 25-96 in from the right edge. The
  * shadow is a few stacked bands that fade out going down, each a transparent dark block.
  */
@@ -158,7 +176,7 @@ const WHEEL_SHADOW_BAND_HEIGHT = 7; // art pixels per band
  * background - a plain shape at one opacity (not layered/blurred). It's a plain, clean TRAPEZOID
  * (four straight sides - a flat top edge, a flat bottom edge, and two straight slanted sides; no
  * extra bevelled corners), the shape a rectangle lying flat on the ground becomes once drawn in
- * perspective: assets/background.png draws its floor that way (the grout lines converge upward,
+ * perspective: assets/backgrounds/background.png draws its floor that way (the grout lines converge upward,
  * toward the garage door - the same treatment the apartment room's floor uses), so a shadow with
  * straight, PARALLEL sides would sit at the wrong angle for it. Narrower at the top (nearer the
  * vanishing point, by the wheels) and wider at the bottom (nearer the viewer) reads as a rectangle
@@ -175,7 +193,7 @@ const TRUCK_SHADOW_Y_OVERLAP = 90 * ART_SCALE;
 
 /**
  * THE TRUCK EXTRAS: separate images placed on the frame AFTER it has been stretched to the board
- * (assets/side-light.png 128x448, handlebar-left/right.png 29x160, license-plate.png 256x106, all
+ * (assets/truck/side-light.png 128x448, handlebar-left/right.png 29x160, license-plate.png 256x106, all
  * art pixels). They sit ON the frame's side pillars (centred in the 96 px side margins, which
  * never stretch sideways), so they need no stretching: a light and a handlebar on each side, and a licence plate on the bumper that shows the truck's number
  * (set in the game's font, Fredoka). Each *_SCALE is relative to the normal art scale, because
@@ -207,6 +225,7 @@ const CHARACTER_DEPTH = 15; // the worker character, standing just in front of e
 const SHUTTER_DEPTH = 60; // covers the board, over the parcels placed on it
 const FLOATING_REWARD_DEPTH = 70; // the rising "+$X" text, above even the shutter
 const DRAG_DEPTH = 500; // the parcel being carried
+const FTUE_CURSOR_DEPTH = 900; // the first-day hand cursor: over the carried parcel (DRAG_DEPTH), under the pause menu
 const PAUSE_DEPTH = 1000; // the pause overlay: above the whole scene (worker included), below the new-piece popup
 
 /** The worker "thinks" (see WorkerCharacter.think) after this long with no clicks/drags (ms)... */
@@ -218,8 +237,9 @@ const THINK_SLOW_MS = 35000;
 const HINT_PULSE_IDLE_MS = 5500;
 /** How long one pulse lasts before the button settles back to its normal size (ms). */
 const HINT_PULSE_MS = 3000;
-/** How much bigger the Hint button gets at the top of each beat (1 = normal size). */
-const HINT_PULSE_GROW = 1.12;
+/** How much bigger the Hint button gets at the top of each beat (1 = normal size). Big enough to be
+ *  hard to miss when the player has been idle for a while. */
+const HINT_PULSE_GROW = 1.35;
 /** Length of one grow-or-shrink beat of the pulse (ms). */
 const HINT_PULSE_BEAT_MS = 500;
 /** The pulse repeats every HINT_PULSE_IDLE_MS while the player stays idle, but never more than
@@ -240,17 +260,10 @@ const DUST_COLOR = 0xcfc3a8;
 const TRUCK_BOB_MS = 260;
 const TRUCK_BOB_PX = 5 * UI_SCALE;
 
-/** Size (design pixels) of the square HUD icon buttons (assets/*-icon.png are 96x96, drawn at half). */
+/** Size (design pixels) of the square HUD icon buttons (assets/ui/*-icon.png are 96x96, drawn at half). */
 const HUD_BUTTON_SIZE = 48 * UI_SCALE;
 
-/** assets/money-HUD.png is 270x96 (a cash icon on its left third, blank panel on the right) -
- *  drawn at the same height as the icon squares, keeping its own aspect ratio for the width. */
-const MONEY_PANEL_HEIGHT = HUD_BUTTON_SIZE;
-const MONEY_PANEL_WIDTH = MONEY_PANEL_HEIGHT * (270 / 96);
-/** How far from the panel's right edge the amount is right-aligned (design pixels before UI_SCALE). */
-const MONEY_TEXT_RIGHT_PADDING = 16 * UI_SCALE;
-
-/** assets/whiteboard-HUD.png is 440x240 art pixels: a calendar icon (centred ~y81) above a truck
+/** assets/ui/whiteboard-HUD.png is 440x240 art pixels: a calendar icon (centred ~y81) above a truck
  *  icon (centred ~y172), both on the left, with blank board to their right for the numbers.
  *  Drawn at half size (220x120), pinned to the top-right corner. */
 const WHITEBOARD_SCALE = 0.5 * UI_SCALE;
@@ -280,10 +293,10 @@ const FLOATING_REWARD_RISE = 70 * UI_SCALE;
 const FLOATING_REWARD_FADE_MS = 350;
 const FLOATING_REWARD_HOLD_MS = 650;
 
-/** Coins awarded for completing a truck whose data doesn't set its own `reward` (see
- *  levels.schema.md) — every puzzle actually shipped in levels.shapes.json sets one explicitly,
- *  so this is purely a safety net for hand-edited/future level data that omits it. */
-const DEFAULT_REWARD = 10;
+/** Screen y (design px) the boss's panels are centred on: below the whiteboard, above the belt. */
+const PANEL_CENTER_Y = 348;
+/** Radius of the hint-count circle on the Hint button (screen px). */
+const HINT_BADGE_RADIUS = 11 * UI_SCALE;
 
 export class PuzzleScene extends Scene
 {
@@ -298,29 +311,55 @@ export class PuzzleScene extends Scene
      * button and DayCompleteScene's "Next Day" button all pass { levelIndex, truckIndex }
      * here to say which truck to play. Defaults to level 1, truck 1 if started with no data.
      *
-     * @param {{ levelIndex?: number, truckIndex?: number }} [data]
+     * `resumed` marks a truck that is being picked up again rather than started: the player left it
+     * for the Shop or Decorate screen from the pause menu and pressed Back. It is the same truck (the
+     * same puzzle), but the day's opening popup is not shown again and `hintUsed` carries over, so
+     * leaving the truck is not a way to get its free hint twice.
+     *
+     * @param {{ levelIndex?: number, truckIndex?: number, overtime?: boolean, resumed?: boolean, hintUsed?: boolean }} [data]
      */
     init (data)
     {
         this.levelIndex = data && typeof data.levelIndex === 'number' ? data.levelIndex : 0;
         this.truckIndex = data && typeof data.truckIndex === 'number' ? data.truckIndex : 0;
+        /** True for the opt-in extra truck after the day's last one (the overtime offer). */
+        this.isOvertime = Boolean(data && data.overtime);
+        /** True when this truck is being picked up again after a visit to the Shop / Decorate screens. */
+        this.resumed = Boolean(data && data.resumed);
 
         // A day always begins at its first truck, so that's the one moment the day's
         // running totals start over (covers Play from the title screen and Next Day alike).
-        if (this.truckIndex === 0)
+        if (this.truckIndex === 0 && !this.resumed)
         {
-            this.registry.set('dayTrucksCompleted', 0);
-            this.registry.set('dayEarned', 0);
-            // Earnings so far today, broken down by truck difficulty - e.g.
-            // { easy: { count: 2, earned: 20 }, hard: { count: 1, earned: 35 } } - shown as a
-            // breakdown on DayCompleteScene. Only difficulties actually played appear as keys.
-            this.registry.set('dayByDifficulty', {});
+            // One entry per truck packed so far today - { tier, amount, overtime } - shown line by line
+            // on the paycheck (DayCompleteScene).
+            this.registry.set('dayTruckLog', []);
         }
 
         this.hasWon = false;
         this.isPaused = false;
-        /** True while the "New piece!" popup is up (the thinking clocks don't run then). */
+        /** True while the day-start popup or the first-day guide is up (the thinking clocks don't run then). */
         this.introShowing = false;
+        /** The first-day guide (FtueGuide) while it is running, else null. */
+        this.ftue = null;
+        /** The gold glow round the highlighted tray parcel during the guide, and its pulse. */
+        this.ftueGlow = null;
+        this.ftueGlowTween = null;
+        /** The hand cursor demonstrating the drag during the first-day guide, else null. */
+        this.ftueCursor = null;
+        /** The boss's tip panel that is up now (see showTip), else null. */
+        this.activeTip = null;
+        /** The tutorial Skip button, while there is a tutorial to skip, else null. */
+        this.skipButton = null;
+        /** True while the hint tip (day 2) is up, so the idle Hint nudge doesn't compete with its pulse. */
+        this.hintGuideActive = false;
+        /** The gold halo behind the Hint button during the day-2 tip, and its tween. */
+        this.hintHalo = null;
+        this.hintHaloTween = null;
+        /** Pending restart of the guide's pulse after the mouse leaves the Hint button. */
+        this.hintResumeTimer = null;
+        /** The small circle on the Hint button showing hints left (see updateHintBadge). */
+        this.hintBadge = null;
         /** Milliseconds since the last click/drag, and since the worker last thought (or the truck began). */
         this.idleMs = 0;
         this.slowMs = 0;
@@ -332,8 +371,10 @@ export class PuzzleScene extends Scene
         this.hintPulseTween = undefined;
         /** The Hint button's normal scale, captured when it is built, to pulse from and settle back to. */
         this.hintBaseScale = undefined;
-        /** Each truck allows one hint; a fresh scene instance per truck resets this. */
-        this.hintUsed = false;
+        /** Every PUZZLE (truck) has its own FREE hint: false at the start of each truck (see `resumed` above). */
+        this.hintUsed = Boolean(data && data.hintUsed);
+        /** True while the extra-hint popup is up, so a second click on Hint cannot stack another. */
+        this.hintOfferOpen = false;
         /** The hinted target ({ shapeId, row, col }) once the hint has been used, else null. */
         this.hint = null;
         /** Whether the hint highlight is currently drawn on the board. */
@@ -346,10 +387,10 @@ export class PuzzleScene extends Scene
     {
         // Fallback fill, in case the background image is ever missing or doesn't quite cover the
         // canvas (e.g. an unusual aspect ratio under Scale.FIT) - picked to match the floor colour
-        // in assets/background.png so a sliver of it showing through is not jarring.
+        // in assets/backgrounds/background.png so a sliver of it showing through is not jarring.
         this.cameras.main.setBackgroundColor(0xe8d9c3);
 
-        // The warehouse scene behind the truck (assets/background.png, 2560x1440 art pixels - full
+        // The warehouse scene behind the truck (assets/backgrounds/background.png, 2560x1440 art pixels - full
         // screen at the same 2x-design scale as the rest of the art). Drawn first so everything
         // else sits on top of it.
         this.add.image(0, 0, 'warehouse-background').setOrigin(0, 0).setScale(ART_SCALE).setDepth(BACKGROUND_DEPTH);
@@ -358,7 +399,8 @@ export class PuzzleScene extends Scene
         // fails fast and visibly here rather than producing a silently-wrong board.
         this.levels = loadShapeLevels(shapeLevelsRaw);
         this.levelData = this.levels[this.levelIndex];
-        const truck = this.getDayPuzzles()[this.truckIndex];
+        // An overtime truck is the extra puzzle chosen when the offer was accepted (see offerOvertime).
+        const truck = this.isOvertime ? this.registry.get('overtimePuzzle').puzzle : this.getDayPuzzles()[this.truckIndex];
 
         this.truck = truck;
         this.grid = createGridForTruck(truck);
@@ -491,32 +533,71 @@ export class PuzzleScene extends Scene
         const trucksTotal = this.levelData.trucks.length;
         const boardLeft = this.scale.width - 16 * UI_SCALE - WHITEBOARD_WIDTH;
         const boardTop = 16 * UI_SCALE;
-        this.add.image(boardLeft, boardTop, 'whiteboard-HUD').setOrigin(0, 0).setScale(WHITEBOARD_SCALE);
+        // The board, its two texts and (during the workload tip) its gold frame live in one container
+        // centred on the board, so they can pulse as a single piece.
+        const boardCx = boardLeft + WHITEBOARD_WIDTH / 2;
+        const boardCy = boardTop + WHITEBOARD_HEIGHT / 2;
+        this.whiteboard = this.add.container(boardCx, boardCy);
+        this.whiteboard.add(this.add.image(-WHITEBOARD_WIDTH / 2, -WHITEBOARD_HEIGHT / 2, 'whiteboard-HUD').setOrigin(0, 0).setScale(WHITEBOARD_SCALE));
+        /** Where the Day / truck-count whiteboard is, for the tip that points at it. */
+        this.whiteboardBounds = { x: boardLeft, y: boardTop, width: WHITEBOARD_WIDTH, height: WHITEBOARD_HEIGHT };
         const whiteboardTextStyle = {
             fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
             fontSize: 26 * UI_SCALE,
             color: '#3a362f',
         };
-        this.add
-            .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE, boardTop + WHITEBOARD_DAY_Y * WHITEBOARD_SCALE, `Day ${this.levelIndex + 1}`, whiteboardTextStyle)
-            .setOrigin(0, 0.5);
-        this.add
-            .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE, boardTop + WHITEBOARD_TRUCK_Y * WHITEBOARD_SCALE, `${this.truckIndex + 1}/${trucksTotal}`, whiteboardTextStyle)
-            .setOrigin(0, 0.5);
+        this.whiteboard.add(
+            this.add
+                .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE - boardCx, boardTop + WHITEBOARD_DAY_Y * WHITEBOARD_SCALE - boardCy, `Day ${this.levelIndex + 1}`, whiteboardTextStyle)
+                .setOrigin(0, 0.5)
+        );
+        this.whiteboard.add(
+            this.add
+                .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE - boardCx, boardTop + WHITEBOARD_TRUCK_Y * WHITEBOARD_SCALE - boardCy, this.isOvertime ? 'Overtime' : `${this.truckIndex + 1}/${trucksTotal}`, whiteboardTextStyle)
+                .setOrigin(0, 0.5)
+        );
 
         this.layoutTray();
         this.wireDragEvents();
         this.createHud();
 
-        // A level that introduces new shapes announces them once, at the start of the day (its
-        // first truck; later trucks are fresh scene instances and must not repeat it).
-        if (this.truckIndex === 0 && this.levelData.newShapes.length > 0)
+        // Every day opens with a popup (day number, truck count, an action line, the boss), which
+        // also lists any shapes the level introduces. Only on the first truck; later trucks are
+        // fresh scene instances and must not repeat it, and neither does a truck picked up again
+        // after a visit to the Shop / Decorate screens.
+        // The very first puzzle of a new game has its own guided start instead (see startFtue),
+        // which does run again if the player left it part-way (the guide restarts from its welcome).
+        if (this.truckIndex === 0)
         {
-            this.introShowing = true;
-            showNewPieceIntro(this, this.levelData.newShapes, () => {
-                this.introShowing = false;
-            });
+            if (this.levelIndex === 0 && !this.registry.get('ftueDone'))
+            {
+                this.introShowing = true;
+                this.startFtue(truckRight);
+            }
+            else if (!this.resumed)
+            {
+                this.introShowing = true;
+                showDayStartPopup(this, this.levelIndex + 1, trucksTotal, this.levelData.newShapes, () => {
+                    this.introShowing = false;
+                });
+            }
         }
+
+        // A returning player can skip all of this tutorial (added first: the hint tip below marks itself done at once).
+        this.addTutorialSkipButton();
+
+        // One-off tips from the boss on later trucks of the first two days (see the two start methods).
+        if (this.levelIndex === 0 && this.truckIndex === 1 && !this.registry.get('workloadTipDone'))
+        {
+            this.startWorkloadTip(truckRight);
+        }
+        else if (this.levelIndex === 1 && this.truckIndex === 1 && !this.registry.get('hintTipDone'))
+        {
+            this.startHintTip(truckRight);
+        }
+        // (The Hint button's attention-grabbing pulse ends when the boss's tip goes away - players
+        // are not pushed to use the hint. Only the idle nudge, see update(), comes back later.)
+
 
         // Gameplay music. If it is already playing (this is the next truck of the same day) it
         // just carries on; it is stopped by DayCompleteScene and restarted here on the next day.
@@ -555,7 +636,7 @@ export class PuzzleScene extends Scene
 
         // The Hint button nudges the player if they've gone quiet for a while, repeating every
         // HINT_PULSE_IDLE_MS as long as they stay idle, up to HINT_PULSE_MAX_STREAK times in a row.
-        if (this.hintButton && !this.hintUsed && this.hintPulseStreak < HINT_PULSE_MAX_STREAK)
+        if (this.hintButton && !this.hintUsed && !this.hintGuideActive && this.hintPulseStreak < HINT_PULSE_MAX_STREAK)
         {
             this.hintIdleMs += delta;
             if (this.hintIdleMs >= HINT_PULSE_IDLE_MS)
@@ -574,6 +655,12 @@ export class PuzzleScene extends Scene
     pulseHint ()
     {
         const button = this.hintButton;
+        // The mouse is on the button, which is already growing it (see pressFeedback.js) - a pulse
+        // on top would fight that, and the player is clearly looking at it anyway.
+        if (button.getData('hovered'))
+        {
+            return;
+        }
         this.hintPulseTween = this.tweens.add({
             targets: button,
             scaleX: this.hintBaseScale.x * HINT_PULSE_GROW,
@@ -628,7 +715,7 @@ export class PuzzleScene extends Scene
     getDayPuzzles ()
     {
         const stored = this.registry.get('dayPuzzles');
-        if (this.truckIndex !== 0 && stored && stored.levelIndex === this.levelIndex)
+        if ((this.truckIndex !== 0 || this.resumed) && stored && stored.levelIndex === this.levelIndex)
         {
             return stored.puzzles;
         }
@@ -647,7 +734,7 @@ export class PuzzleScene extends Scene
         }
 
         const puzzles = pickDayPuzzles(this.levelData, poolOffset + playNumber);
-        this.registry.set('dayPuzzles', { levelIndex: this.levelIndex, puzzles });
+        this.registry.set('dayPuzzles', { levelIndex: this.levelIndex, puzzles, playNumber: poolOffset + playNumber });
         return puzzles;
     }
 
@@ -717,33 +804,25 @@ export class PuzzleScene extends Scene
      */
     createHud ()
     {
-        // Reads the all-time pay count from the registry (see the class doc) rather
-        // than tracking its own copy, so it's always correct immediately on a fresh
-        // PuzzleScene instance, and carries over from day to day (the `?? 0` is a
-        // safety net for an unset registry key).
-        const totalEarned = this.registry.get('totalEarned') ?? 0;
-        // The art itself is the panel (cash icon plus a blank strip to its right); the amount is
-        // a plain text object drawn on top of that blank strip, right-aligned, with no "$" -
-        // the icon is what says "this is money" now.
-        this.moneyPanel = this.add.image(0, 0, 'money-HUD').setOrigin(0, 0).setDisplaySize(MONEY_PANEL_WIDTH, MONEY_PANEL_HEIGHT);
-        this.coinText = this.add
-            .text(0, 0, `${totalEarned}`, {
-                fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                fontSize: 18 * UI_SCALE,
-                color: '#3a362f',
-            })
-            .setOrigin(1, 0.5);
+        // Reads the wallet from the registry (see game/economy.js) rather than tracking its own
+        // copy, so it's always correct immediately on a fresh PuzzleScene instance and carries over
+        // from day to day.
+        const money = getEconomyState(this.registry).money;
+        // The money counter (cash icon panel with the total on it), shared with the shop - see
+        // objects/MoneyHud.js. At scale 1 it is the same height as the icon buttons beside it.
+        this.moneyHud = new MoneyHud(this, money);
 
         const makeIconButton = (textureKey, onClick, onPress) => {
             const button = this.add
                 .image(0, 0, textureKey)
                 .setDisplaySize(HUD_BUTTON_SIZE, HUD_BUTTON_SIZE)
                 .setInteractive({ useHandCursor: true });
-            // Registered before makePressable so the press handles the button's normal size, not a
-            // mid-pulse one (see stopHintPulse).
+            // Registered before makePressable so a press or hover starts from the button's normal
+            // size, not a mid-pulse one (see stopHintPulse).
             if (onPress)
             {
                 button.on('pointerdown', onPress);
+                button.on('pointerover', onPress);
             }
             // Squashes when pressed (see objects/pressFeedback.js); these act in place, so no delay.
             makePressable(this, button, onClick);
@@ -757,8 +836,37 @@ export class PuzzleScene extends Scene
         // the very first day stays hint-free.
         if (this.levelIndex >= 1)
         {
-            this.hintButton = makeIconButton('hint-icon', () => this.useHint(), () => this.stopHintPulse());
+            this.hintButton = makeIconButton('hint-icon', () => this.useHint(), () => {
+                // Hover/press: the pulse always yields to the button's own feedback. The guide's pulse
+                // is only paused (see the pointerout handler below), a normal nudge is over.
+                this.stopHintPulse();
+            });
+            this.hintButton.on('pointerout', () => {
+                if (this.hintGuideActive)
+                {
+                    if (this.hintResumeTimer)
+                    {
+                        this.hintResumeTimer.remove(false);
+                    }
+                    this.hintResumeTimer = this.time.delayedCall(900, () => this.startHintGuidePulse());
+                }
+            });
             this.hintBaseScale = { x: this.hintButton.scaleX, y: this.hintButton.scaleY };
+
+            // The hint-count circle on the button's top-right corner (positioned in layoutHud).
+            const circle = this.add.graphics();
+            const label = this.add
+                .text(0, 0, '1', { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 14 * UI_SCALE, color: '#ffffff' })
+                .setOrigin(0.5);
+            // A plus for "none left" (it opens the buy-another-hint popup): two white strokes.
+            const plus = this.add.graphics();
+            plus.lineStyle(2.5 * UI_SCALE, 0xffffff, 1);
+            const arm = HINT_BADGE_RADIUS * 0.5;
+            plus.lineBetween(-arm, 0, arm, 0);
+            plus.lineBetween(0, -arm, 0, arm);
+            const container = this.add.container(0, 0, [circle, label, plus]).setDepth(5);
+            this.hintBadge = { container, parts: { circle, label, plus } };
+            this.updateHintBadge();
         }
 
         this.layoutHud();
@@ -784,18 +892,355 @@ export class PuzzleScene extends Scene
             }
             // The buttons are positioned by their centres (so the press squash is centred).
             button.setPosition(margin + HUD_BUTTON_SIZE / 2, y + HUD_BUTTON_SIZE / 2);
+            if (button === this.hintButton && this.hintBadge)
+            {
+                // Overlapping the button's top-right corner.
+                this.hintBadge.container.setPosition(button.x + HUD_BUTTON_SIZE / 2 - 4 * UI_SCALE, button.y - HUD_BUTTON_SIZE / 2 + 4 * UI_SCALE);
+            }
             y += HUD_BUTTON_SIZE + gap;
         }
 
-        // The money panel: level with the top button (Pause), just to its right. The amount sits
-        // right-aligned near the panel's right edge, vertically centred on it.
+        // The money panel: level with the top button (Pause), just to its right.
         const panelX = margin + HUD_BUTTON_SIZE + gap;
-        this.moneyPanel.setPosition(panelX, margin);
-        this.coinText.setPosition(panelX + MONEY_PANEL_WIDTH - MONEY_TEXT_RIGHT_PADDING, margin + MONEY_PANEL_HEIGHT / 2);
+        this.moneyHud.setPosition(panelX, margin);
     }
 
     /**
-     * Hint button handler: highlights where one piece belongs, once per truck.
+     * Where the boss's panels go: in the gap between the truck's right edge and the screen's.
+     *
+     * @param {number} truckRight - screen x of the truck's right edge.
+     * @returns {{left: number, width: number}}
+     */
+    guidePanelSpace (truckRight)
+    {
+        const S = UI_SCALE;
+        const left = truckRight + 30 * S;
+        // Never narrower than 260 design px, even beside a wide truck (it then overlaps the truck's shadow, not its board).
+        const width = Math.max(260 * S, Math.min(430 * S, this.scale.width - 24 * S - left));
+        return { left: Math.min(left, this.scale.width - 24 * S - width), width };
+    }
+
+    /**
+     * Shows a message in a boss panel that does not block play, holds it long enough to read, then
+     * sends it away.
+     *
+     * @param {number} truckRight - screen x of the truck's right edge.
+     * @param {string} message
+     * @param {() => void} [onGone] - called when the panel has left.
+     * @param {{left: number, width: number, centerY: number} | null} [placement] - where to put the
+     *   panel (screen pixels) instead of beside the truck.
+     */
+    showTip (truckRight, message, onGone, placement = null)
+    {
+        const { left, width, centerY } = placement ?? { ...this.guidePanelSpace(truckRight), centerY: PANEL_CENTER_Y * UI_SCALE };
+        const panel = new BossPanel(this, { left, centerY, width });
+        panel.show(message);
+        panel.popIn();
+        // About 2 seconds plus 45 ms a character, at most 8 seconds.
+        const readMs = Math.min(8000, 2000 + 45 * message.length);
+        const tip = { panel, onGone, timer: null, done: false };
+        tip.timer = this.time.delayedCall(readMs, () => this.finishTip(tip));
+        this.activeTip = tip;
+    }
+
+    /** Sends a tip's panel away (once), then runs its onGone. */
+    finishTip (tip)
+    {
+        if (tip.done)
+        {
+            return;
+        }
+        tip.done = true;
+        tip.timer.remove(false);
+        if (this.activeTip === tip)
+        {
+            this.activeTip = null;
+        }
+        tip.panel.popOut(tip.onGone);
+    }
+
+    /**
+     * The second truck of day 1: the boss points at the whiteboard that shows the day's workload,
+     * which is outlined in gold and pulses (grows and shrinks) while he talks.
+     *
+     * @param {number} truckRight
+     */
+    startWorkloadTip (truckRight)
+    {
+        const S = UI_SCALE;
+        this.registry.set('workloadTipDone', true);
+        const { width, height } = this.whiteboardBounds;
+        // A gold frame round the board, inside its container so both pulse together.
+        const frame = this.add.graphics();
+        frame.lineStyle(4 * S, 0xffd34d, 1);
+        frame.strokeRoundedRect(-width / 2 - 4 * S, -height / 2 - 4 * S, width + 8 * S, height + 8 * S, 10 * S);
+        this.whiteboard.add(frame);
+        // The board swells and shrinks until the boss has finished talking.
+        const pulse = this.tweens.add({ targets: this.whiteboard, scale: 1.14, duration: 550, ease: 'Sine.easeInOut', yoyo: true, repeat: -1 });
+        this.showTip(truckRight, 'This board here shows you your workload for the day. Now get packing!', () => {
+            pulse.stop();
+            this.whiteboard.setScale(1);
+            frame.destroy();
+        });
+    }
+
+    /**
+     * The second truck of day 2 (the Hint button's first day): the boss explains the Hint button in a
+     * panel on the LEFT of the screen, close to the button (it may cover the worker), and the button
+     * pulses with a halo while he talks. When the panel goes away so do the pulse and the halo - the
+     * player is not pushed to use the hint (only the idle nudge, see update(), prompts them later) -
+     * and pressing the button ends them sooner.
+     *
+     * @param {number} truckRight
+     */
+    startHintTip (truckRight)
+    {
+        const S = UI_SCALE;
+        this.registry.set('hintTipDone', true);
+        this.startHintGuide();
+        this.showTip(
+            truckRight,
+            'You can get help but only once per puzzle.',
+            () => this.endHintGuide(),
+            // Just right of the HUD buttons, and high up, level with the Hint button.
+            { left: this.hintButton.x + (HUD_BUTTON_SIZE / 2) + 28 * S, width: 400 * S, centerY: 240 * S }
+        );
+    }
+
+    /**
+     * Makes the Hint button impossible to miss: a big, quick pulse and a gold halo that swells and
+     * fades behind it. It lasts while the boss's hint tip is up (startHintTip ends it when the panel
+     * goes) or until the player presses the button (see useHint), whichever is first.
+     * Hovering the button pauses the pulse (so the hover growth is not fighting it) and it resumes
+     * when the mouse leaves.
+     */
+    startHintGuide ()
+    {
+        const S = UI_SCALE;
+        this.hintGuideActive = true;
+        this.startHintGuidePulse();
+        const size = HUD_BUTTON_SIZE * 1.5;
+        const halo = this.add.graphics().setDepth(-1);
+        halo.fillStyle(0xffd34d, 0.8);
+        halo.fillRoundedRect(-size / 2, -size / 2, size, size, 16 * S);
+        halo.lineStyle(4 * S, 0xf0a020, 1);
+        halo.strokeRoundedRect(-size / 2, -size / 2, size, size, 16 * S);
+        halo.setPosition(this.hintButton.x, this.hintButton.y);
+        this.hintHalo = halo;
+        this.hintHaloTween = this.tweens.add({ targets: halo, scale: { from: 0.85, to: 1.35 }, alpha: { from: 1, to: 0.25 }, duration: 520, yoyo: true, repeat: -1 });
+    }
+
+    /** The guide's big pulse on the button itself (a much bigger and quicker one than the idle nudge's). */
+    startHintGuidePulse ()
+    {
+        if (!this.hintGuideActive || this.hintPulseTween)
+        {
+            return;
+        }
+        this.hintPulseTween = this.tweens.add({
+            targets: this.hintButton,
+            scaleX: this.hintBaseScale.x * 1.3,
+            scaleY: this.hintBaseScale.y * 1.3,
+            duration: 420,
+            ease: 'Sine.easeInOut',
+            yoyo: true,
+            repeat: -1,
+        });
+    }
+
+    /** Ends the hint guide's attention-grabbing: the big pulse, the halo and the hold on the idle nudge. */
+    endHintGuide ()
+    {
+        this.hintGuideActive = false;
+        this.stopHintPulse();
+        if (this.hintResumeTimer)
+        {
+            this.hintResumeTimer.remove(false);
+            this.hintResumeTimer = null;
+        }
+        if (this.hintHaloTween)
+        {
+            this.hintHaloTween.stop();
+            this.hintHaloTween = null;
+        }
+        if (this.hintHalo)
+        {
+            this.hintHalo.destroy();
+            this.hintHalo = null;
+        }
+    }
+
+    /**
+     * Updates the little circle on the Hint button's top-right corner: the number of hints left
+     * (one per truck), or a plus once it has been spent. Does nothing on a day with no Hint button.
+     */
+    updateHintBadge ()
+    {
+        if (!this.hintBadge)
+        {
+            return;
+        }
+        const S = UI_SCALE;
+        const r = HINT_BADGE_RADIUS;
+        const hintsLeft = this.hintUsed ? 0 : 1;
+        const { circle, label, plus } = this.hintBadge.parts;
+        circle.clear();
+        circle.fillStyle(hintsLeft > 0 ? 0xe8573f : 0x4fa263, 1);
+        circle.fillCircle(0, 0, r);
+        circle.lineStyle(2 * S, 0xffffff, 1);
+        circle.strokeCircle(0, 0, r);
+        label.setVisible(hintsLeft > 0).setText(String(hintsLeft));
+        plus.setVisible(hintsLeft === 0);
+    }
+
+    /**
+     * Adds the tutorial's Skip button (bottom-right) if the player was offered one, has not used it, and
+     * there is still tutorial ahead on this screen: all of day 1, and day 2 until the hint tip has run.
+     */
+    addTutorialSkipButton ()
+    {
+        const S = UI_SCALE;
+        const tutorialAhead = this.levelIndex === 0 || (this.levelIndex === 1 && !this.registry.get('hintTipDone'));
+        if (!isTutorialSkippable(this.registry) || !tutorialAhead)
+        {
+            return;
+        }
+        // Above the first-day guide's dimming (2000) and its panel (2001), and the day-start popup.
+        this.skipButton = addSkipButton(this, {
+            x: this.scale.width - 100 * S,
+            y: this.scale.height - 48 * S,
+            depth: 2100,
+            onSkip: () => this.skipTutorial(),
+        });
+    }
+
+    /**
+     * The player pressed Skip: the tutorial is over for good (progress.skipTutorial marks it in the
+     * save). Everything on this screen goes: the first-day guide's dimming, panel, highlight and hand
+     * cursor, any boss tip and the Hint button's guide pulse and halo. The idle Hint nudge stays.
+     */
+    skipTutorial ()
+    {
+        skipTutorial(this.registry);
+        if (this.ftue)
+        {
+            this.ftue.cancel(); // its onDone (below) frees the player once the panel has gone
+        }
+        this.clearFtueHighlight();
+        if (this.activeTip)
+        {
+            this.finishTip(this.activeTip);
+        }
+        this.endHintGuide();
+        this.skipButton?.destroy();
+        this.skipButton = null;
+    }
+
+    /**
+     * Starts the first-day guide: a panel beside the truck (to its right, in the space between the
+     * truck and the screen edge) with the boss talking the player through placing a first parcel.
+     * Its highlights use the same solver hint as the Hint button but do not spend that hint.
+     *
+     * @param {number} truckRight - screen x of the truck's right edge.
+     */
+    startFtue (truckRight)
+    {
+        const S = UI_SCALE;
+        const { left, width } = this.guidePanelSpace(truckRight);
+        this.ftue = new FtueGuide(this, {
+            left,
+            centerY: PANEL_CENTER_Y * S,
+            width,
+            onHighlight: () => this.showFtueHighlight(),
+            onClearHighlight: () => this.clearFtueHighlight(),
+            onDone: () => {
+                this.ftue = null;
+                this.introShowing = false;
+                this.registry.set('ftueDone', true);
+            },
+        });
+        this.ftue.start();
+    }
+
+    /**
+     * Highlights one parcel to place and where it goes: the board cells in gold (GridView's hint
+     * highlight) and a pulsing gold glow round the matching parcel in the tray. The choice is the
+     * solver's: a piece and spot that is part of a real solution.
+     */
+    showFtueHighlight ()
+    {
+        const hint = findHint(this.grid, this.truck.pieces);
+        if (!hint)
+        {
+            return;
+        }
+        this.gridView.showHint(hint.shapeId, hint.row, hint.col);
+
+        const view = this.pieceViews.find((candidate) => candidate.shapeId === hint.shapeId && !candidate.isPlaced);
+        if (!view)
+        {
+            return;
+        }
+        // Gold rounded squares just larger than each of the piece's cells, drawn behind its art, so
+        // together they form a halo round the whole shape. Local to the piece, so it moves with it.
+        const glow = this.add.graphics();
+        const pad = 6 * UI_SCALE;
+        glow.fillStyle(0xffd34d, 0.9);
+        for (const cell of getShapeCells(view.shapeId))
+        {
+            glow.fillRoundedRect(cell.col * view.cellSize - pad, cell.row * view.cellSize - pad, view.cellSize + 2 * pad, view.cellSize + 2 * pad, pad * 1.5);
+        }
+        view.container.addAt(glow, 0);
+        this.ftueGlow = glow;
+        this.ftueGlowTween = this.tweens.add({ targets: glow, alpha: { from: 1, to: 0.35 }, duration: 600, yoyo: true, repeat: -1 });
+
+        // A hand cursor shows the move: it presses on that parcel in the tray and drags to its spot on
+        // the board, over and over until the player puts a piece down. It is only a picture - the real
+        // parcel is never touched. It carries one cell of the piece (the one nearest the middle of
+        // its shape, so the fingertip is always on the parcel itself, even for an L), and that same
+        // cell lands on its board square.
+        const cells = getShapeCells(view.shapeId);
+        const middleRow = cells.reduce((sum, cell) => sum + cell.row + 0.5, 0) / cells.length;
+        const middleCol = cells.reduce((sum, cell) => sum + cell.col + 0.5, 0) / cells.length;
+        const carried = cells.reduce((best, cell) =>
+            Math.hypot(cell.row + 0.5 - middleRow, cell.col + 0.5 - middleCol) < Math.hypot(best.row + 0.5 - middleRow, best.col + 0.5 - middleCol) ? cell : best);
+        this.ftueCursor = new GuideCursor(this, { depth: FTUE_CURSOR_DEPTH });
+        this.ftueCursor.playDrag(
+            () => {
+                // The parcel's resting place in the tray (it may be mid-drag by now), drawn at its tray size.
+                const scale = view.trayScale ?? view.container.scaleX;
+                return {
+                    x: view.homeX + (carried.col + 0.5) * view.cellSize * scale,
+                    y: view.homeY + (carried.row + 0.5) * view.cellSize * scale,
+                };
+            },
+            () => ({
+                x: this.gridView.x + (hint.col + carried.col + 0.5) * this.gridView.cellSize,
+                y: this.gridView.y + (hint.row + carried.row + 0.5) * this.gridView.cellSize,
+            })
+        );
+    }
+
+    /** Removes the first-day guide's highlights from the board and the tray. */
+    clearFtueHighlight ()
+    {
+        this.ftueCursor?.stop();
+        this.ftueCursor = null;
+        this.gridView.clearHint();
+        if (this.ftueGlowTween)
+        {
+            this.ftueGlowTween.stop();
+            this.ftueGlowTween = null;
+        }
+        if (this.ftueGlow)
+        {
+            this.ftueGlow.destroy();
+            this.ftueGlow = null;
+        }
+    }
+
+    /**
+     * Hint button handler: highlights where one piece belongs.
      *
      * The target comes from core/Solver.findHint: a piece the player has not placed yet,
      * in a spot that fits the pieces already on the board - or, if what they have placed is
@@ -803,13 +1248,14 @@ export class PuzzleScene extends Scene
      * overlap their wrong pieces. Either way nothing the player has placed is touched; the
      * highlight is only a nudge (drawn by GridView.showHint above the pieces).
      *
-     * The button is faded out and disabled as soon as the hint is used, and stays that way
-     * even if the player then undoes/resets the board. A no-op while paused, after the truck
-     * is won, or once the hint has been used.
+     * The first hint of each PUZZLE (truck) is free. Every other press - once that is spent, while
+     * the badge shows a plus - opens the "Need another hint?" popup
+     * (see offerExtraHint): pay for another. A no-op while paused, after the truck is won, or
+     * while the popup is open.
      */
     useHint ()
     {
-        if (this.hintUsed || this.isPaused || this.hasWon)
+        if (this.isPaused || this.hasWon || this.hintOfferOpen)
         {
             return;
         }
@@ -822,12 +1268,64 @@ export class PuzzleScene extends Scene
             return;
         }
 
+        if (this.hintUsed)
+        {
+            this.offerExtraHint();
+            return;
+        }
+
         this.hintUsed = true;
         this.hint = hint;
-        this.stopHintPulse();
-        this.hintButton.disableInteractive();
-        this.tweens.add({ targets: this.hintButton, alpha: 0.3, duration: 400 });
+        this.updateHintBadge();
+        // Using the hint also ends the guide's pulse and halo for good, and its hold on the idle nudge.
+        this.registry.set('hintEverUsed', true);
+        this.endHintGuide();
 
+        this.refreshHint();
+    }
+
+    /**
+     * Opens the "Need another hint?" popup: pay with in-game money (3 units of the current rank - see
+     * core/economy.hintCost) for another hint. The buy button is greyed out when the wallet is short.
+     * Buying plays the cash register.
+     */
+    offerExtraHint ()
+    {
+        const day = this.levelIndex + 1;
+        const cost = hintCost(day, economy);
+        this.hintOfferOpen = true;
+        this.stopHintPulse();
+        showHintOffer(this, {
+            cost,
+            canAfford: getEconomyState(this.registry).money >= cost,
+            onBuy: () => {
+                this.hintOfferOpen = false;
+                const purchase = purchaseHint(getEconomyState(this.registry), day, economy);
+                if (purchase.ok)
+                {
+                    setEconomyState(this.registry, purchase.state);
+                    this.moneyHud.setAmount(purchase.state.money);
+                    this.layoutHud();
+                    playSfx(this, 'cash-register');
+                    this.grantExtraHint();
+                }
+            },
+            onClose: () => {
+                this.hintOfferOpen = false;
+            },
+        });
+    }
+
+    /** Points at a (new) piece on the board: the extra hint's payoff, once it is bought or the ad is watched. */
+    grantExtraHint ()
+    {
+        const hint = findHint(this.grid, this.truck.pieces);
+        if (!hint)
+        {
+            return;
+        }
+        this.hint = hint;
+        this.hintShowing = false;
         this.refreshHint();
     }
 
@@ -885,6 +1383,8 @@ export class PuzzleScene extends Scene
         pieceView.container.setDepth(PLACED_DEPTH);
 
         this.refreshHint();
+        // The first-day guide moves on once the player has put a piece down.
+        this.ftue?.notifyPlaced();
 
         // hasWon guards against ever launching the win overlay twice: once every open
         // cell is filled, isComplete() keeps returning true, but there are no more
@@ -913,8 +1413,12 @@ export class PuzzleScene extends Scene
 
             // Picking up a piece mid-pulse cuts the Hint button back to its normal size right
             // away, rather than letting it finish its current beat (stopHintPulse already does
-            // this snap, not an eased return).
-            this.stopHintPulse();
+            // this snap, not an eased return). The day-2 tip's pulse is meant to carry on while the
+            // player plays, so it is left alone.
+            if (!this.hintGuideActive)
+            {
+                this.stopHintPulse();
+            }
 
             // Grabbing a piece that is on the board takes it off the Grid straight away, so
             // its own old cells don't count as occupied when it is dropped back nearby.
@@ -1084,6 +1588,8 @@ export class PuzzleScene extends Scene
     togglePause ()
     {
         this.isPaused = !this.isPaused;
+        // The Skip button floats above everything, so it must not show through the pause menu.
+        this.skipButton?.setVisible(!this.isPaused);
 
         for (const pieceView of this.pieceViews)
         {
@@ -1119,18 +1625,9 @@ export class PuzzleScene extends Scene
         const centerX = this.scale.width / 2;
         const centerY = this.scale.height / 2;
 
-        // A small local helper keeps both buttons' styling identical.
-        const makeButton = (y, label, fill, onClick, delay) => {
-            const button = this.add
-                .text(centerX, y, label, {
-                    fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                    fontSize: 28 * S,
-                    color: '#3a362f',
-                    backgroundColor: fill,
-                    padding: { x: 36 * S, y: 14 * S },
-                })
-                .setOrigin(0.5)
-                .setInteractive({ useHandCursor: true });
+        // Picture buttons (labels painted in), both the same height.
+        const makeButton = (y, texture, onClick, delay, height = 76) => {
+            const button = addImageButton(this, centerX, y, texture, height);
             makePressable(this, button, onClick, { delay });
             return button;
         };
@@ -1139,75 +1636,114 @@ export class PuzzleScene extends Scene
         // The panel's wood frame is ~37px thick, so the paper to lay content on is the panel
         // minus that on every side. The content (title, two buttons, even gaps) is centred
         // vertically in that paper, hence the symmetric offsets below.
-        const panel = addUiPanel(this, centerX, centerY, 360 * S, 350 * S);
+        const panel = addUiPanel(this, centerX, centerY, 360 * S, 640 * S);
         const title = this.add
-            .text(centerX, centerY - 86 * S, 'Paused', {
+            .text(centerX, centerY - 236 * S, 'Paused', {
                 fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
                 fontSize: 44 * S,
                 color: '#3a362f',
             })
             .setOrigin(0.5);
-        const resume = makeButton(centerY - 5 * S, 'Resume', '#a3d29c', () => this.togglePause(), 0);
-        // Quit leaves the scene, so a short delay lets the press squash be seen first.
-        const quit = makeButton(centerY + 81 * S, 'Quit', '#8fc1e3', () => this.scene.start('TitleScene'), 140);
+        const resume = makeButton(centerY - 156 * S, 'button-resume', () => this.togglePause(), 0);
+        // Shop and Decorate open the same screens as the end-of-day report; their Back arrow returns here.
+        // The Shop picture is narrow for its height, so it is drawn taller (108) to look as big as the others.
+        const shop = makeButton(centerY - 54 * S, 'button-shop', () => this.openFromPause('ShopScene'), 0, 108);
+        const decorate = makeButton(centerY + 46 * S, 'button-decorate', () => this.openFromPause('ApartmentScene'), 0);
+        // Quit asks Yes / No first. Every truck packed so far is already saved, so saying Yes only loses
+        // the truck being played. No delay: the button only opens a popup, and a delayed button can be pressed once only.
+        const quit = makeButton(centerY + 130 * S, 'button-quit', () => {
+            showConfirm(this, {
+                title: 'Quit to the title?',
+                subtitle: 'This truck starts over.',
+                onYes: () => this.scene.start('TitleScene'),
+            });
+        }, 0);
 
-        this.pauseOverlay = this.add.container(0, 0, [blocker, panel, title, resume, quit]).setDepth(PAUSE_DEPTH);
+        // Two square toggles under the buttons: music, then sound effects. The state lives in audio.js
+        // (so it outlasts this menu, which is rebuilt each time) and each toggle starts from it.
+        const toggles = [
+            // A mute toggle is saved the moment it is flipped (saveMute rewrites the last saved state
+            // with the new mute choice and nothing else).
+            addAudioToggle(this, centerX - 44 * S, centerY + 226 * S, 68, 'music', isMusicMuted(), (muted) => {
+                setMusicMuted(muted);
+                saveMute();
+            }),
+            addAudioToggle(this, centerX + 44 * S, centerY + 226 * S, 68, 'sfx', isSfxMuted(), (muted) => {
+                setSfxMuted(muted);
+                saveMute();
+            }),
+        ];
+        for (const { button, toggle } of toggles)
+        {
+            makePressable(this, button, () => { toggle(); });
+        }
+
+        this.pauseOverlay = this.add.container(0, 0, [blocker, panel, title, resume, shop, decorate, quit, ...toggles.map(({ button }) => button)]).setDepth(PAUSE_DEPTH);
     }
 
     /**
-     * Called once, the moment the board's last open cell is filled. Credits this truck's reward
-     * to the day's running totals kept in the registry (see the class doc), switches input off
-     * (so the completed board can't be interacted with further), closes the truck (the shutter
-     * animation, see closeTruck()), then pauses this scene and routes on: straight into the next truck if another follows today (no
-     * overlay), or — after the day's last truck — DayCompleteScene with the
-     * day's totals (trucks completed, truck earnings, any end-of-level bonuses, total earned)
-     * and its Shop/Decorate/Next Day buttons.
+     * Leaves this truck for the Shop or Decorate screen (from the pause menu). The screen is told to
+     * send the player back here when they press Back: the same truck of the same day, with its puzzle
+     * and its hint state, but with the parcels back on the belt (this scene is rebuilt, not frozen).
+     * Nothing here changes the save - money only moves if something is bought, which the shop saves.
      *
-     * End-of-level bonuses (e.g. the first-day bonus) come from the level data's `bonuses`
-     * list and are paid once, here, when the day's last truck is done - added to both the day's
-     * earnings and the all-time total.
+     * @param {'ShopScene' | 'ApartmentScene'} sceneKey - the screen to open.
+     */
+    openFromPause (sceneKey)
+    {
+        this.scene.start(sceneKey, {
+            levelIndex: this.levelIndex,
+            returnTo: {
+                scene: 'PuzzleScene',
+                data: { levelIndex: this.levelIndex, truckIndex: this.truckIndex, overtime: this.isOvertime, resumed: true, hintUsed: this.hintUsed },
+            },
+        });
+    }
+
+    /**
+     * Called once, the moment the board's last open cell is filled. Pays this truck - what the economy
+     * rules say for its tier and the day, or time and a half for an overtime truck - into the wallet
+     * and today's paycheck log, switches input off (so the completed board can't be interacted with
+     * further) and closes the truck (the shutter animation, see closeTruck()). Then it routes on:
+     *
+     *   - not the day's last truck: straight into the next truck, no overlay in between;
+     *   - the day's last truck, on an overtime day: the overtime offer (offerOvertime());
+     *   - the day's last truck otherwise, or an overtime truck: the end of the day (finishDay()).
      */
     handleWin ()
     {
-        const reward = this.truck.reward ?? DEFAULT_REWARD;
-        const trucksCompleted = (this.registry.get('dayTrucksCompleted') ?? 0) + 1;
-        const dayEarned = (this.registry.get('dayEarned') ?? 0) + reward;
-        this.registry.set('dayTrucksCompleted', trucksCompleted);
-        this.registry.set('dayEarned', dayEarned);
-        let totalEarned = (this.registry.get('totalEarned') ?? 0) + reward;
-        this.registry.set('totalEarned', totalEarned);
+        const day = this.levelIndex + 1;
+        const tier = this.truck.difficulty;
+        const reward = this.isOvertime ? overtimePay(tier, day, economy) : payForTruck(tier, day, economy);
 
-        // Fold this truck's reward into today's running breakdown by difficulty (see init()).
-        const byDifficulty = { ...(this.registry.get('dayByDifficulty') ?? {}) };
-        const difficultyKey = this.truck.difficulty;
-        const soFar = byDifficulty[difficultyKey] ?? { count: 0, earned: 0 };
-        byDifficulty[difficultyKey] = { count: soFar.count + 1, earned: soFar.earned + reward };
-        this.registry.set('dayByDifficulty', byDifficulty);
+        // The paycheck gets a line for this truck; the wallet gets the money.
+        this.registry.set('dayTruckLog', [...(this.registry.get('dayTruckLog') ?? []), { tier, amount: reward, overtime: this.isOvertime }]);
+        const wallet = addMoney(getEconomyState(this.registry), reward);
+        setEconomyState(this.registry, wallet);
 
-        // The worker's reaction scales with difficulty: happy (easy), happy2 (medium), celebrate
-        // (hard). The reward floats up over the board - both fire right away, not after the
-        // shutter closes, so the player sees them as part of "I just solved this" rather than
-        // the truck leaving.
-        const reactionPose = { easy: 'happy', medium: 'happy2', hard: 'celebrate' }[difficultyKey] ?? 'happy';
+        // The worker reacts with a random pose - happy, arms folded (happy2) or celebrating - never the
+        // same one twice in a row (the last is remembered in the registry across trucks). The reward
+        // floats up over the board - both fire right away, not after the shutter closes, so the
+        // player sees them as part of "I just solved this" rather than the truck leaving.
+        const reactionPose = pickReaction(['happy', 'happy2', 'celebrate'], this.registry.get('lastWorkerReaction'));
+        this.registry.set('lastWorkerReaction', reactionPose);
         this.worker.react(reactionPose);
         this.showFloatingReward(reward);
         playSfx(this, 'cash-register'); // in step with the rising "+$N" text
 
-        const trucksTotal = this.levelData.trucks.length;
-        const isLastTruck = this.truckIndex === trucksTotal - 1;
+        const isLastRegularTruck = !this.isOvertime && this.truckIndex === this.levelData.trucks.length - 1;
 
-        // The day's last truck also pays out the level's bonuses, once.
-        const bonuses = isLastTruck ? this.levelData.bonuses ?? [] : [];
-        const bonusTotal = bonuses.reduce((sum, bonus) => sum + bonus.amount, 0);
-        if (bonusTotal > 0)
+        // Save the progress: this truck is packed and paid, so quitting from here only loses the next one.
+        // The day's last truck and an overtime truck are not committed; they lead into the overtime offer /
+        // the report, and commitDay saves the finished day (until then their pay is held back from any
+        // save - see progress.js captureState).
+        if (!this.isOvertime && !isLastRegularTruck)
         {
-            this.registry.set('dayEarned', dayEarned + bonusTotal);
-            totalEarned += bonusTotal;
-            this.registry.set('totalEarned', totalEarned);
+            commitTruck(this.registry, this.truckIndex + 1);
         }
 
         // Keep the HUD counter (visible dimmed behind the overlay) in step with the popup.
-        this.coinText.setText(`${totalEarned}`);
+        this.moneyHud.setAmount(wallet.money);
         this.layoutHud();
 
         this.gridView.clearHint();
@@ -1217,18 +1753,21 @@ export class PuzzleScene extends Scene
         // the board while the shutter is coming down.
         this.input.enabled = false;
         this.closeTruck(() => {
-            if (isLastTruck)
+            if (this.isOvertime)
             {
-                this.scene.pause();
-                this.scene.launch('DayCompleteScene', {
-                    levelIndex: this.levelIndex,
-                    trucksCompleted,
-                    truckEarnings: dayEarned,
-                    byDifficulty,
-                    bonuses,
-                    earned: dayEarned + bonusTotal,
-                    isLastLevel: this.levelIndex === this.levels.length - 1,
-                });
+                this.finishDay();
+            }
+            else if (isLastRegularTruck)
+            {
+                const offer = overtimeOffer(day, economy);
+                if (offer)
+                {
+                    this.offerOvertime(offer);
+                }
+                else
+                {
+                    this.finishDay();
+                }
             }
             else
             {
@@ -1239,31 +1778,87 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * The "+$X" that floats up from the middle of the board and fades away, shown the instant a
+     * After the day's last truck on an overtime day: the boss asks "One more truck? Time and a
+     * half." Yes picks an extra puzzle of the day's highest tier that has not been played today
+     * (data/pickDayPuzzles.pickOvertimePuzzle) and starts it as one more truck; No ends the day with
+     * no penalty. The offer does not reveal the truck's tier or pay.
+     *
+     * @param {{tier: string, pay: number}} offer - from core/economy.overtimeOffer.
+     */
+    offerOvertime (offer)
+    {
+        // Input was switched off for the shutter; the popup's own dim layer blocks everything under it.
+        this.input.enabled = true;
+        showOvertimeOffer(this, {
+            onAccept: () => {
+                const picks = this.registry.get('dayPuzzles');
+                const puzzle = pickOvertimePuzzle(this.levelData, offer.tier, picks.puzzles, picks.playNumber);
+                this.registry.set('overtimePuzzle', { levelIndex: this.levelIndex, puzzle });
+                this.scene.start('PuzzleScene', { levelIndex: this.levelIndex, truckIndex: this.levelData.trucks.length, overtime: true });
+            },
+            onDecline: () => this.finishDay(),
+        });
+    }
+
+    /**
+     * Ends the day: pays the day's one-off bonuses (each is paid once ever - the claimed list is part
+     * of the saved economy state), then shows the paycheck (DayCompleteScene) with the day's truck
+     * lines, bonuses, any promotion that took effect today, the total and the new balance.
+     */
+    finishDay ()
+    {
+        const day = this.levelIndex + 1;
+        const claim = claimBonuses(getEconomyState(this.registry), day, economy);
+        setEconomyState(this.registry, claim.state);
+        // The report needs the day's truck lines, and commitDay clears the registry's copy, so read it first.
+        const truckLog = this.registry.get('dayTruckLog') ?? [];
+        // The day is over: save the state as it will be at the start of the NEXT day (this day's pay and
+        // bonuses are in the wallet, any promotion follows from the new day number).
+        commitDay(this.registry, this.levelIndex + 1);
+        this.moneyHud.setAmount(claim.state.money);
+        this.layoutHud();
+
+        const truckEarnings = truckLog.reduce((sum, truck) => sum + truck.amount, 0);
+        const bonusTotal = claim.granted.reduce((sum, bonus) => sum + bonus.amount, 0);
+
+        this.scene.pause();
+        this.scene.launch('DayCompleteScene', {
+            levelIndex: this.levelIndex,
+            truckLog,
+            truckEarnings,
+            bonuses: claim.granted,
+            earned: truckEarnings + bonusTotal,
+            promotion: promotionRank(day, economy),
+            isLastLevel: this.levelIndex === this.levels.length - 1,
+        });
+    }
+
+    /**
+     * The "+[note] X" that floats up from the middle of the board and fades away, shown the instant a
      * truck is solved (see handleWin()). It rises steadily for its whole lifetime while its
      * opacity fades in, holds, then fades out again - two separate tweens on the same text object,
      * since a single tween's yoyo would also send the rise back downward, which isn't wanted here.
      * Drawn above even the shutter (FLOATING_REWARD_DEPTH), so it stays visible as the truck closes.
      *
-     * @param {number} amount - the coins this truck paid, shown as "+$amount".
+     * @param {number} amount - the coins this truck paid, shown as "+" then the currency note then the amount.
      */
     showFloatingReward (amount)
     {
         const x = this.gridView.x + this.gridView.pixelWidth / 2;
         const y = this.gridView.y + this.gridView.pixelHeight / 2;
 
-        const text = this.add
-            .text(x, y, `+$${amount}`, {
-                fontFamily: 'Fredoka, Arial Black',
-                fontStyle: '600',
-                fontSize: 40 * UI_SCALE,
-                color: '#3f7d4e',
-                stroke: '#faf3e4',
-                strokeThickness: 6 * UI_SCALE,
-            })
-            .setOrigin(0.5)
-            .setAlpha(0)
-            .setDepth(FLOATING_REWARD_DEPTH);
+        // One container (prefix, note icon, number) so the rise and the fade below act on all of it.
+        const text = addMoneyText(this, x, y, amount, {
+            fontFamily: 'Fredoka, Arial Black',
+            fontStyle: '600',
+            fontSize: 40 * UI_SCALE,
+            color: '#3f7d4e',
+            stroke: '#faf3e4',
+            strokeThickness: 6 * UI_SCALE,
+            prefix: '+',
+            align: 'center',
+        });
+        text.setAlpha(0).setDepth(FLOATING_REWARD_DEPTH);
 
         const totalMs = FLOATING_REWARD_FADE_MS * 2 + FLOATING_REWARD_HOLD_MS;
         this.tweens.add({
@@ -1284,7 +1879,7 @@ export class PuzzleScene extends Scene
     }
 
     /**
-     * The "truck is closed" moment: the shutter (assets/truck-shutter.png, 720x720 art pixels, the
+     * The "truck is closed" moment: the shutter (assets/truck/truck-shutter.png, 720x720 art pixels, the
      * size of the largest board) slides down over the board and the parcels in it, then rests
      * briefly, then `onDone` is called.
      *

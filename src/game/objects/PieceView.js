@@ -7,7 +7,7 @@ import { UI_SCALE } from '../uiScale.js';
  * PieceView.js
  *
  * A Phaser Container that renders a single polyomino piece as its true fixed-orientation
- * shape, using the piece's art image (assets/<shape id>.png, loaded by the Preloader under the
+ * shape, using the piece's art image (assets/pieces/<shape id>.png, loaded by the Preloader under the
  * shape id as its texture key). Each image is drawn at 144 px per cell - twice the 72 px
  * game cell, for sharpness - and is scaled to the piece's bounding box. Positioned so (x, y) is the world-space top-left corner of the piece's own
  * bounding box, matching the same "origin = bounding-box corner" convention Shape.js and

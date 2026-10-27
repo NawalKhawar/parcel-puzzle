@@ -1,24 +1,34 @@
 /**
  * pressFeedback.js
  *
- * Click feedback for buttons: when a button is pressed it squashes down a little, and when it is
- * let go (or the pointer slides off it) it springs back with a small overshoot. It is a Phaser
- * tween on the button's scale, so it works on any button - an image, a text button - without a
- * separate "pressed" version of the artwork.
+ * Mouse feedback for buttons, as a Phaser tween on the button's scale (so it works on any button -
+ * an image, a text button - without separate artwork for each state):
+ *   - HOVER:   the button grows smoothly while the mouse is over it, and eases back to its normal
+ *              size when the mouse leaves.
+ *   - PRESS:   when pressed it squashes down a little (below its normal size), and when let go it
+ *              springs back with a small overshoot - to the hover size if the mouse is still on it,
+ *              otherwise to normal.
+ * All three are one size multiplier `k` (1 = normal) applied to the button's own scale, so the
+ * states blend into each other instead of fighting.
  */
 
 import { playSfx } from '../audio.js';
 
-/** How small a button gets while pressed (1 = normal size). */
+/** Size multipliers for each state (1 = the button's normal size). */
+const HOVER_SCALE = 1.08;
 const PRESSED_SCALE = 0.9;
+const HOVER_MS = 120;
 const PRESS_MS = 70;
 const RELEASE_MS = 170;
 
 /**
- * Makes a (already interactive) button react to being pressed, and runs `onActivate` when it is.
+ * Makes a (already interactive) button react to the mouse, and runs `onActivate` when it is pressed.
  *
- * The squash is centred on the button's middle whatever its origin is (a text button with its
- * origin at the top-left would otherwise shrink towards that corner).
+ * The size change is centred on the button's middle whatever its origin is (a text button with its
+ * origin at the top-left would otherwise grow towards the bottom-right corner).
+ *
+ * While the mouse is over the button its data key 'hovered' is true, so other code that animates the
+ * same button (the hint pulse) can leave it alone.
  *
  * @param {import('phaser').Scene} scene - the scene that owns the button.
  * @param {import('phaser').GameObjects.GameObject} target - the button; must already be interactive.
@@ -32,7 +42,10 @@ const RELEASE_MS = 170;
 export function makePressable(scene, target, onActivate, options = {}) {
     const delay = options.delay ?? 0;
     let activated = false;
-    let restState = null; // the button's size and position when it was last at rest
+    let hovering = false;
+    let pressing = false;
+    let rest = null; // the button's size and position at k = 1, read whenever it is at rest
+    let k = 1; // current size multiplier
     let animation = null;
 
     const stopAnimation = () => {
@@ -42,46 +55,85 @@ export function makePressable(scene, target, onActivate, options = {}) {
         }
     };
 
-    /** Animates the button between "rest" (k = 1) and "pressed" (k = PRESSED_SCALE). */
-    const animateTo = (to, duration, ease) => {
-        stopAnimation();
-        const from = restState.currentK;
-        animation = scene.tweens.addCounter({
-            from,
-            to,
-            duration,
-            ease,
-            onUpdate: (tween) => {
-                const k = tween.getValue();
-                restState.currentK = k;
-                target.setScale(restState.scaleX * k, restState.scaleY * k);
-                // Keep the button's centre fixed: when the origin is not the middle, the
-                // position must move as the size changes.
-                target.setPosition(
-                    restState.x + (0.5 - target.originX) * restState.displayWidth * (1 - k),
-                    restState.y + (0.5 - target.originY) * restState.displayHeight * (1 - k)
-                );
-            },
-        });
-    };
-
-    target.on('pointerdown', () => {
-        if (activated) {
-            return;
-        }
-        if (!restState || restState.currentK === 1) {
-            // Record the resting size/position (read now rather than once at setup, because
-            // the scene may have moved or resized the button since).
-            restState = {
+    /**
+     * Records the button's normal size and position. Only done while it is at rest (k = 1), because
+     * the scene may have moved or resized the button since the last time, and mid-animation the
+     * numbers would already include the multiplier.
+     */
+    const captureRest = () => {
+        if (!rest || k === 1) {
+            rest = {
                 scaleX: target.scaleX,
                 scaleY: target.scaleY,
                 x: target.x,
                 y: target.y,
                 displayWidth: target.displayWidth,
                 displayHeight: target.displayHeight,
-                currentK: 1,
             };
         }
+    };
+
+    /** Animates the size multiplier from where it is now to `to`. */
+    const animateTo = (to, duration, ease) => {
+        captureRest();
+        stopAnimation();
+        animation = scene.tweens.addCounter({
+            from: k,
+            to,
+            duration,
+            ease,
+            onUpdate: (tween) => {
+                // The button may have been destroyed (scene changed) mid-animation.
+                if (!target.active) {
+                    stopAnimation();
+                    return;
+                }
+                k = tween.getValue();
+                target.setScale(rest.scaleX * k, rest.scaleY * k);
+                // Keep the button's centre fixed: when the origin is not the middle, the
+                // position must move as the size changes.
+                target.setPosition(
+                    rest.x + (0.5 - target.originX) * rest.displayWidth * (1 - k),
+                    rest.y + (0.5 - target.originY) * rest.displayHeight * (1 - k)
+                );
+            },
+        });
+    };
+
+    /**
+     * Eases the button to the size it should rest at when nothing is pressing it: the hover size
+     * while the mouse is on it, normal size otherwise.
+     *
+     * @param {string} ease - Phaser ease name; the release after a press uses a springy one.
+     */
+    const settle = (ease = 'Sine.easeOut') => {
+        if (hovering) {
+            animateTo(HOVER_SCALE, HOVER_MS, ease);
+        } else if (k !== 1) {
+            animateTo(1, RELEASE_MS, ease);
+        }
+    };
+
+    target.on('pointerover', () => {
+        hovering = true;
+        target.setData('hovered', true);
+        if (!pressing) {
+            settle();
+        }
+    });
+
+    target.on('pointerout', () => {
+        hovering = false;
+        pressing = false;
+        target.setData('hovered', false);
+        settle('Back.easeOut');
+    });
+
+    target.on('pointerdown', () => {
+        if (activated) {
+            return;
+        }
+        pressing = true;
         animateTo(PRESSED_SCALE, PRESS_MS, 'Quad.easeOut');
         playSfx(scene, 'pop');
 
@@ -93,11 +145,8 @@ export function makePressable(scene, target, onActivate, options = {}) {
         }
     });
 
-    const release = () => {
-        if (restState && restState.currentK !== 1) {
-            animateTo(1, RELEASE_MS, 'Back.easeOut');
-        }
-    };
-    target.on('pointerup', release);
-    target.on('pointerout', release);
+    target.on('pointerup', () => {
+        pressing = false;
+        settle('Back.easeOut');
+    });
 }
