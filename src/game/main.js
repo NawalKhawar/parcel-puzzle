@@ -7,20 +7,22 @@ import { PromotionScene } from './scenes/PromotionScene';
 import { BonusScene } from './scenes/BonusScene';
 import { ShopScene } from './scenes/ShopScene';
 import { ApartmentScene } from './scenes/ApartmentScene';
-import { UI_SCALE } from './uiScale.js';
+import { gameSizeForWindow, watchOrientation } from './layout.js';
+import { installAudioUnlock } from './audio.js';
 import { AUTO, Game, Scale } from 'phaser';
 
 //  Find out more information about the Game Config at:
 //  https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
-//  width/height are multiplied by UI_SCALE (not left at the 1280x720 design size) so
-//  the canvas has enough real pixels to stay sharp once Scale.FIT stretches it to fill
-//  a full-screen/high-DPI display - see uiScale.js for why this is necessary. Every
-//  scene's own pixel constants (cell size, margins, font sizes, etc.) are multiplied
-//  by the same UI_SCALE, so the game still looks the same size on screen - just crisper.
+//  The canvas size comes from layout.js: on a wide window it is exactly the original 1280x720 design
+//  size, on a tall window (a phone held upright) it is the portrait size. Both are multiplied by UI_SCALE
+//  (see uiScale.js) so the canvas has enough real pixels to stay sharp once Scale.FIT stretches it to
+//  fill a full-screen/high-DPI display; every scene's own pixel constants are multiplied by the same
+//  UI_SCALE, so the game looks the same size on screen - just crisper.
+const startSize = gameSizeForWindow(window.innerWidth, window.innerHeight);
 const config = {
     type: AUTO,
-    width: 1280 * UI_SCALE,
-    height: 720 * UI_SCALE,
+    width: startSize.width,
+    height: startSize.height,
     parent: 'game-container',
     backgroundColor: '#028af8',
     scale: {
@@ -42,7 +44,13 @@ const config = {
 
 const StartGame = (parent) => {
 
-    return new Game({ ...config, parent });
+    const g = new Game({ ...config, parent });
+    // A rotated phone / resized window that flips between wide and tall switches layout (layout.js).
+    watchOrientation(g);
+    // Make the sound start reliably after the player's first tap on every browser / phone (see audio.js).
+    // The sound manager exists once the game has booted.
+    if (g.isBooted) { installAudioUnlock(g); } else { g.events.once('boot', () => installAudioUnlock(g)); }
+    return g;
 
 }
 

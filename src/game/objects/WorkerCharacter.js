@@ -97,6 +97,18 @@ export class WorkerCharacter
     }
 
     /**
+     * Shows or hides the character and its shadow (the portrait layout hides it when the truck leaves
+     * no room beside it). Everything else - poses, reactions, thinking - keeps working while hidden.
+     *
+     * @param {boolean} visible
+     */
+    setVisible (visible)
+    {
+        this.sprite.setVisible(visible);
+        this.shadow.setVisible(visible);
+    }
+
+    /**
      * Starts (or restarts) the neutral pose's idle bob: a slow, endless "breathing" squash and
      * stretch (see IDLE_BOB_MS). Only the sprite's own vertical scale is tweened, not its
      * position - the origin stays bottom-centre throughout, so the feet never leave floorY.

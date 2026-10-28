@@ -99,6 +99,30 @@ export function promotionRaisePercent(day, config) {
 }
 
 /**
+ * Everything the promotion screen says about the raise on a day, worked out from the rank pay in the
+ * config (nothing typed in): the pay per unit before and after, and the raise as a whole percent of
+ * the STARTING pay ($5 -> $6 is "20% above your starting wage", $5 -> $7 is "40%").
+ *
+ * @param {number} day - the day the promotion happens (or any later day).
+ * @param {EconomyConfig} config
+ * @returns {{oldUnitValue: number, newUnitValue: number, startUnitValue: number, percent: number, headline: string, breakdown: string}}
+ */
+export function promotionBreakdown(day, config) {
+    const rank = rankForDay(day, config);
+    // The rank just below (the first rank has none, so it "raises" from itself: 0%).
+    const previous = config.ranks[Math.max(0, rank.rank - 2)];
+    const percent = promotionRaisePercent(day, config);
+    return {
+        oldUnitValue: previous.unitValue,
+        newUnitValue: rank.unitValue,
+        startUnitValue: config.ranks[0].unitValue,
+        percent,
+        headline: `Your pay is now ${percent}% above your starting wage`,
+        breakdown: `$${previous.unitValue} → $${rank.unitValue} per unit`,
+    };
+}
+
+/**
  * What one truck of a tier pays on a day: the tier's units times the day's rank unit value.
  *
  * @param {string} tier - 'easy' | 'medium' | 'hard'.

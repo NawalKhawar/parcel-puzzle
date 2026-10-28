@@ -8,8 +8,9 @@ import { economy, getEconomyState, setEconomyState } from '../economy.js';
 import { commitTruck, commitDay, saveMute, isTutorialSkippable, skipTutorial } from '../progress.js';
 import { addSkipButton } from '../objects/skipButton.js';
 import { showOvertimeOffer, showHintOffer, showConfirm } from '../objects/OfferPopup.js';
-import { getShapeCells } from '../../core/Shape.js';
-import { computeTrayLayout } from '../../core/TrayLayout.js';
+import { getShapeCells, getShapeBounds } from '../../core/Shape.js';
+import { computeTrayLayout, computeTrayRows, planTrayRows } from '../../core/TrayLayout.js';
+import { isPortrait } from '../layout.js';
 import shapeLevelsRaw from '../../data/levels.shapes.json';
 import { GridView } from '../objects/GridView.js';
 import { PieceView } from '../objects/PieceView.js';
@@ -23,6 +24,9 @@ import { MoneyHud } from '../objects/MoneyHud.js';
 import { addMoneyText } from '../objects/money.js';
 import { makePressable } from '../objects/pressFeedback.js';
 import { addImageButton } from '../objects/imageButton.js';
+import { addBadgeToImage } from '../objects/badge.js';
+import { trackDayStart, trackTruckStart, trackTruckComplete, trackHintUsed, trackReset } from '../../analytics.js';
+import { shopHasBuyable, apartmentHasNew } from '../../core/badges.js';
 import { addAudioToggle } from '../objects/audioToggle.js';
 import { UI_SCALE } from '../uiScale.js';
 import { playSfx, playBgm, GAMEPLAY_BGM_VOLUME, isMusicMuted, isSfxMuted, setMusicMuted, setSfxMuted } from '../audio.js';
@@ -287,6 +291,59 @@ const WHITEBOARD_TRUCK_Y = 172;
 const CHARACTER_X = 240 * UI_SCALE;
 const CHARACTER_SCALE = 0.87; // on top of UI_SCALE - see WorkerCharacter's own scale doc
 
+/**
+ * PORTRAIT LAYOUT (a phone held upright: a 720-wide canvas, 1150-1560 tall - see layout.js).
+ *
+ * The screen is stacked top to bottom: a top bar (HUD buttons, money, the Day / truck whiteboard), the
+ * truck, then the parcels in a tray along the bottom holding one to three rows (landscape has one
+ * long belt, but a 720-wide belt cannot hold a whole truck's parcels at a size a finger can grab, so the
+ * tray is stretched taller to take several rows).
+ * A 390 css-px phone shows this canvas at about 0.54 scale, so everything a player touches is bigger
+ * than in landscape (buttons 76, text 26+). The numbers below are design px, multiplied by UI_SCALE where used.
+ */
+const PORTRAIT = {
+    /** Side margin, and the square HUD icon buttons (a finger-sized 76). */
+    margin: 16,
+    hudButton: 96,
+    /** Money panel scale (1 = the landscape HUD's 48 high; it sits UNDER the icon row) and the whiteboard's scale relative to its landscape size. */
+    moneyScale: 1.3,
+    whiteboardScale: 1.1,
+    /** The top bar's height: the tallest thing in it (the whiteboard) plus margins. */
+    topBarGap: 12,
+    /** Where things are in the hand-made tray picture (assets/mobile/conveyor-belt-portrait, 1355 x 818 after
+     *  trimming), measured on the picture itself: its size, the dark surface's rectangle (where parcels may sit)
+     *  and how far in the 9-slice cuts go (the slanted side rails never stretch). */
+    tray: { width: 1355, height: 818, surfaceLeft: 135, surfaceRight: 1220, surfaceTop: 64, surfaceBottom: 698, sliceSide: 140 },
+    /** Gap each side of the tray and above the screen's bottom edge, air inside a row's edges, air above and
+     *  below a row of parcels, and the tallest the dark surface may be stretched (design px). */
+    trayMargin: 6,
+    trayBottomGap: 10,
+    trayPad: 10,
+    trayRowPad: 26,
+    trayMaxSurface: 470,
+    /** Tallest board in the portrait layout (landscape caps boards at 360): more height is available. */
+    boardMaxHeight: 700,
+    /** The biggest a board cell gets in portrait (landscape: 72). Bigger cells are easier to drop on. */
+    maxCell: 102,
+    /** Parcels in the tray are drawn at about this cell size; a layout below trayMinCell is rejected for one more row. */
+    trayCell: 66,
+    trayMinCell: 50,
+    /** The most rows of parcels the tray holds. */
+    maxLanes: 3,
+    /** How far the worker may overlap the truck's frame on a narrow side gap, and the smallest he is drawn at. */
+    workerOverlap: 50,
+    workerMinScale: 0.55,
+    /** Spare height (above the tray) the truck is lifted by when the board is short enough to leave some, so the
+     *  worker can stand on the floor IN FRONT of the truck instead of beside it at the same ground line. A tall
+     *  board leaves none and the truck stays low. With no lift the worker may only overlap the frame by workerOverlapFlat. */
+    floorGap: 64,
+    workerOverlapFlat: 20,
+    /** Room reserved under the top bar for the boss's panel while a tutorial message is planned for this truck. */
+    guideBand: 262,
+    /** How far the carried parcel is held above a touching finger, so the finger does not hide it. */
+    touchLift: 84,
+};
+
 /** The "+$X" that floats up and fades when a truck is solved: how far it rises and how long each
  *  stage takes (ms) - fades in, holds at full opacity, then fades out, while rising the whole time. */
 const FLOATING_REWARD_RISE = 70 * UI_SCALE;
@@ -303,6 +360,29 @@ export class PuzzleScene extends Scene
     constructor ()
     {
         super('PuzzleScene');
+    }
+
+    /**
+     * What this scene should be restarted with when the window changes shape (landscape <-> portrait,
+     * see layout.js): the same truck of the same day, picked up again with the parcels back on the belt
+     * and the hint state kept - the same data openFromPause hands back after a visit to the shop.
+     *
+     * @returns {{levelIndex: number, truckIndex: number, overtime: boolean, resumed: boolean, hintUsed: boolean}}
+     */
+    getRelayoutData ()
+    {
+        return { levelIndex: this.levelIndex, truckIndex: this.truckIndex, overtime: this.isOvertime, resumed: true, hintUsed: this.hintUsed };
+    }
+
+    /**
+     * Asked by layout.js before it restarts this scene for a new orientation: not while a truck has just
+     * been solved (its pay is already in the wallet, and restarting would play the truck again).
+     *
+     * @returns {boolean}
+     */
+    relayoutBlocked ()
+    {
+        return this.hasWon;
     }
 
     /**
@@ -360,6 +440,9 @@ export class PuzzleScene extends Scene
         this.hintResumeTimer = null;
         /** The small circle on the Hint button showing hints left (see updateHintBadge). */
         this.hintBadge = null;
+        /** The Hint button of THIS run (none on day 1). Cleared here because the scene object is reused: a New Game after a
+         *  later day would otherwise still point at the destroyed button from the last run. */
+        this.hintButton = undefined;
         /** Milliseconds since the last click/drag, and since the worker last thought (or the truck began). */
         this.idleMs = 0;
         this.slowMs = 0;
@@ -393,7 +476,18 @@ export class PuzzleScene extends Scene
         // The warehouse scene behind the truck (assets/backgrounds/background.png, 2560x1440 art pixels - full
         // screen at the same 2x-design scale as the rest of the art). Drawn first so everything
         // else sits on top of it.
-        this.add.image(0, 0, 'warehouse-background').setOrigin(0, 0).setScale(ART_SCALE).setDepth(BACKGROUND_DEPTH);
+        // (In portrait the picture is the portrait warehouse - see addPortraitBackground.)
+        const portrait = isPortrait(this);
+        /** True on the portrait (phone) layout; see PORTRAIT above and layout.js. */
+        this.portrait = portrait;
+        if (portrait)
+        {
+            this.addPortraitBackground();
+        }
+        else
+        {
+            this.add.image(0, 0, 'warehouse-background').setOrigin(0, 0).setScale(ART_SCALE).setDepth(BACKGROUND_DEPTH);
+        }
 
         // loadShapeLevels throws loudly on any schema violation, so broken level data
         // fails fast and visibly here rather than producing a silently-wrong board.
@@ -403,26 +497,54 @@ export class PuzzleScene extends Scene
         const truck = this.isOvertime ? this.registry.get('overtimePuzzle').puzzle : this.getDayPuzzles()[this.truckIndex];
 
         this.truck = truck;
+
+        // Analytics: a workday begins with its first truck (nothing is sent twice if this scene is rebuilt - see
+        // analytics.js), and every truck's puzzle appearing is a truck Start. An overtime truck belongs to the day already open.
+        if (!this.isOvertime)
+        {
+            trackDayStart(this.levelIndex + 1);
+        }
+        trackTruckStart(this.levelIndex + 1, this.truckIndex, truck.difficulty);
         this.grid = createGridForTruck(truck);
 
         // Input is switched off while a truck closes (see handleWin); this scene instance is
         // reused for the next truck, so make sure it is back on.
         this.input.enabled = true;
 
-        // The conveyor belt fills the whole lower band, behind everything but the truck.
-        const belt = this.add.image(this.scale.width / 2, this.scale.height + BELT_BOTTOM_CLIP, 'conveyor-belt-dark').setOrigin(0.5, 1);
-        const beltHeight = Math.min(BELT_MAX_HEIGHT, this.scale.width * (belt.height / belt.width));
-        belt.setDisplaySize(this.scale.width, beltHeight).setDepth(BELT_DEPTH);
-        this.belt = belt;
-        const beltTop = belt.y - beltHeight;
+        let beltTop;
+        let truckZoneTop;
+        let widthLimit = Infinity;
+        if (portrait)
+        {
+            // Portrait: one tray along the bottom holding one to three rows of parcels (see planPortraitTray), and
+            // the truck gets whatever is left between the top bar (plus, on a tutorial truck, the boss's
+            // panel band) and the top of the tray.
+            this.trayPlan = this.planPortraitTray(truck);
+            beltTop = this.addPortraitTray(this.trayPlan);
+            truckZoneTop = this.portraitTopBarHeight() + (this.isGuidePlanned() ? PORTRAIT.guideBand * UI_SCALE : 0);
+            // The truck's frame adds its side margins to the board, and it must stay inside the screen.
+            widthLimit = (this.scale.width - 2 * PORTRAIT.margin * UI_SCALE - (TRUCK_MARGINS.left + TRUCK_MARGINS.right) * ART_SCALE) / truck.cols;
+        }
+        else
+        {
+            // The conveyor belt fills the whole lower band, behind everything but the truck.
+            const belt = this.add.image(this.scale.width / 2, this.scale.height + BELT_BOTTOM_CLIP, 'conveyor-belt-dark').setOrigin(0.5, 1);
+            const beltHeight = Math.min(BELT_MAX_HEIGHT, this.scale.width * (belt.height / belt.width));
+            belt.setDisplaySize(this.scale.width, beltHeight).setDepth(BELT_DEPTH);
+            this.belt = belt;
+            beltTop = belt.y - beltHeight;
+            truckZoneTop = TRUCK_TOP_MARGIN;
+        }
 
         // One cell size is used for the board and the tray (see the note on MAX_CELL_SIZE).
         // Normally the maximum, but shrunk for tall boards so the board never exceeds
         // BOARD_MAX_HEIGHT, and further if the truck (board + its fixed frame) would not fit
-        // between the top margin and the belt.
+        // between the top margin and the belt (and, in portrait, inside the screen's width).
         const frameHeight = (TRUCK_MARGINS.top + TRUCK_MARGINS.bottom) * ART_SCALE;
-        const roomForBoard = beltTop - TRUCK_BELT_GAP - TRUCK_TOP_MARGIN - frameHeight;
-        this.cellSize = Math.min(MAX_CELL_SIZE, BOARD_MAX_HEIGHT / truck.rows, roomForBoard / truck.rows);
+        const roomForBoard = beltTop - TRUCK_BELT_GAP - truckZoneTop - frameHeight;
+        this.cellSize = portrait
+            ? Math.min(PORTRAIT.maxCell * UI_SCALE, PORTRAIT.boardMaxHeight * UI_SCALE / truck.rows, roomForBoard / truck.rows, widthLimit)
+            : Math.min(MAX_CELL_SIZE, BOARD_MAX_HEIGHT / truck.rows, roomForBoard / truck.rows);
 
         const boardPixelWidth = truck.cols * this.cellSize;
         const boardPixelHeight = truck.rows * this.cellSize;
@@ -434,9 +556,16 @@ export class PuzzleScene extends Scene
         const truckArtHeight = boardPixelHeight / ART_SCALE + TRUCK_MARGINS.top + TRUCK_MARGINS.bottom;
         // Centred in the free space between the top margin and the belt gap. The cell-size limit
         // above guarantees the truck is never taller than that space.
-        const freeTop = TRUCK_TOP_MARGIN;
-        const freeBottom = beltTop - TRUCK_BELT_GAP;
-        const truckTop = freeTop + (freeBottom - freeTop - truckArtHeight * ART_SCALE) / 2;
+        const freeTop = truckZoneTop;
+        // (Portrait) a short board leaves spare height: lift the truck by up to PORTRAIT.floorGap of it, which
+        // makes a strip of floor between the truck and the tray for the worker to stand on, in front of the truck.
+        const truckPixelHeight = truckArtHeight * ART_SCALE;
+        const lift = portrait ? Math.min(PORTRAIT.floorGap * UI_SCALE, Math.max(0, beltTop - TRUCK_BELT_GAP - freeTop - truckPixelHeight)) : 0;
+        const freeBottom = beltTop - TRUCK_BELT_GAP - lift;
+        // (Portrait sits the truck on the floor, just above the tray, and lets the spare height go above it.)
+        const truckTop = portrait
+            ? freeBottom - truckArtHeight * ART_SCALE
+            : freeTop + (freeBottom - freeTop - truckArtHeight * ART_SCALE) / 2;
         const boardX = (this.scale.width - boardPixelWidth) / 2;
         const boardY = truckTop + TRUCK_MARGINS.top * ART_SCALE;
 
@@ -520,40 +649,65 @@ export class PuzzleScene extends Scene
         // rest at the same fixed height every truck (not truckBottomY - that moves with each
         // truck's own vertical centring, see freeBottom above), idly bobbing in its neutral pose
         // until handleWin() switches it to a reaction pose once this truck is solved.
-        this.worker = new WorkerCharacter(this, CHARACTER_X, freeBottom, {
-            scale: CHARACTER_SCALE,
+        // In portrait the worker stands in the gap beside the truck, as big as that gap allows (a little
+        // overlap with the truck's frame is fine), and is hidden when a wide truck leaves no room for him.
+        let workerX = CHARACTER_X;
+        let workerScale = CHARACTER_SCALE;
+        let workerShown = true;
+        if (portrait)
+        {
+            const sideGap = truckLeft;
+            // About half of the 480-wide sprite is character (240 per unit of scale). He may overlap the
+            // truck's outer frame a little (it is only decoration, the board is further in), and he stands
+            // against the left edge.
+            // With the truck lifted he stands in front of it and may overlap more; with no lift he stands at its ground line.
+            const overlap = PORTRAIT.workerOverlapFlat + (PORTRAIT.workerOverlap - PORTRAIT.workerOverlapFlat) * (lift / (PORTRAIT.floorGap * UI_SCALE));
+            workerScale = Math.min(0.95, (sideGap / UI_SCALE + overlap) / 240);
+            workerShown = workerScale >= PORTRAIT.workerMinScale;
+            workerScale = Math.max(workerScale, PORTRAIT.workerMinScale);
+            workerX = (240 * workerScale / 2 + 8) * UI_SCALE;
+        }
+        // His feet: at the truck's ground line, or - when the truck is lifted - on the floor in front of it.
+        this.worker = new WorkerCharacter(this, workerX, freeBottom + lift * 0.8, {
+            scale: workerScale,
             depth: CHARACTER_DEPTH,
         });
+        this.worker.setVisible(workerShown);
 
         this.gridView = new GridView(this, boardX, boardY, this.grid, this.cellSize);
 
         // Whiteboard HUD, top right: "Day N" beside the calendar and "k/total" beside the truck
         // icon. The truck total is read from the level's own truck list, so it stays correct
         // automatically as levels are edited.
+        // (Portrait draws it a little bigger - the ratio is exactly 1 in landscape.)
+        const wbRatio = portrait ? PORTRAIT.whiteboardScale : 1;
+        const wbScale = WHITEBOARD_SCALE * wbRatio;
+        const wbWidth = WHITEBOARD_WIDTH * wbRatio;
+        const wbHeight = WHITEBOARD_HEIGHT * wbRatio;
         const trucksTotal = this.levelData.trucks.length;
-        const boardLeft = this.scale.width - 16 * UI_SCALE - WHITEBOARD_WIDTH;
+        const boardLeft = this.scale.width - 16 * UI_SCALE - wbWidth;
         const boardTop = 16 * UI_SCALE;
         // The board, its two texts and (during the workload tip) its gold frame live in one container
         // centred on the board, so they can pulse as a single piece.
-        const boardCx = boardLeft + WHITEBOARD_WIDTH / 2;
-        const boardCy = boardTop + WHITEBOARD_HEIGHT / 2;
+        const boardCx = boardLeft + wbWidth / 2;
+        const boardCy = boardTop + wbHeight / 2;
         this.whiteboard = this.add.container(boardCx, boardCy);
-        this.whiteboard.add(this.add.image(-WHITEBOARD_WIDTH / 2, -WHITEBOARD_HEIGHT / 2, 'whiteboard-HUD').setOrigin(0, 0).setScale(WHITEBOARD_SCALE));
+        this.whiteboard.add(this.add.image(-wbWidth / 2, -wbHeight / 2, 'whiteboard-HUD').setOrigin(0, 0).setScale(wbScale));
         /** Where the Day / truck-count whiteboard is, for the tip that points at it. */
-        this.whiteboardBounds = { x: boardLeft, y: boardTop, width: WHITEBOARD_WIDTH, height: WHITEBOARD_HEIGHT };
+        this.whiteboardBounds = { x: boardLeft, y: boardTop, width: wbWidth, height: wbHeight };
         const whiteboardTextStyle = {
             fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-            fontSize: 26 * UI_SCALE,
+            fontSize: 26 * UI_SCALE * wbRatio,
             color: '#3a362f',
         };
         this.whiteboard.add(
             this.add
-                .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE - boardCx, boardTop + WHITEBOARD_DAY_Y * WHITEBOARD_SCALE - boardCy, `Day ${this.levelIndex + 1}`, whiteboardTextStyle)
+                .text(boardLeft + WHITEBOARD_TEXT_X * wbScale - boardCx, boardTop + WHITEBOARD_DAY_Y * wbScale - boardCy, `Day ${this.levelIndex + 1}`, whiteboardTextStyle)
                 .setOrigin(0, 0.5)
         );
         this.whiteboard.add(
             this.add
-                .text(boardLeft + WHITEBOARD_TEXT_X * WHITEBOARD_SCALE - boardCx, boardTop + WHITEBOARD_TRUCK_Y * WHITEBOARD_SCALE - boardCy, this.isOvertime ? 'Overtime' : `${this.truckIndex + 1}/${trucksTotal}`, whiteboardTextStyle)
+                .text(boardLeft + WHITEBOARD_TEXT_X * wbScale - boardCx, boardTop + WHITEBOARD_TRUCK_Y * wbScale - boardCy, this.isOvertime ? 'Overtime' : `${this.truckIndex + 1}/${trucksTotal}`, whiteboardTextStyle)
                 .setOrigin(0, 0.5)
         );
 
@@ -757,6 +911,12 @@ export class PuzzleScene extends Scene
         );
         this.pieceViews = views;
 
+        if (this.portrait)
+        {
+            this.layoutPortraitTray(views);
+            return;
+        }
+
         const beltTop = this.belt.y - this.belt.displayHeight;
         const surfaceCenterY = beltTop + this.belt.displayHeight * BELT_SURFACE_CENTER;
         const surfaceHeight = this.belt.displayHeight * (BELT_SURFACE_BOTTOM - BELT_SURFACE_TOP);
@@ -795,6 +955,172 @@ export class PuzzleScene extends Scene
         });
     }
 
+    // ------------------------------------------------------------------ portrait (phone) layout
+
+    /**
+     * The portrait warehouse picture behind everything: the hand-made portrait painting
+     * (assets/mobile/gameplay-bg-portrait), scaled to cover the whole canvas (never stretched) and centred, so
+     * a taller or shorter phone only crops a little off the sides.
+     */
+    addPortraitBackground ()
+    {
+        const key = 'gameplay-bg-portrait';
+        const image = this.add.image(this.scale.width / 2, this.scale.height / 2, key).setDepth(BACKGROUND_DEPTH);
+        image.setScale(Math.max(this.scale.width / image.width, this.scale.height / image.height));
+    }
+
+    /** @returns {number} the portrait top bar's height (screen px): the HUD buttons / whiteboard row plus a gap. */
+    portraitTopBarHeight ()
+    {
+        // Two columns: the whiteboard on the right (WHITEBOARD_HEIGHT already includes UI_SCALE) and, on the
+        // left, the icon row with the money panel UNDER it (8 = the gap between them, 48 = the money panel's
+        // height at scale 1). The taller column sets the bar. 16 is the top margin.
+        const leftColumn = (PORTRAIT.hudButton + 8 + 48 * PORTRAIT.moneyScale) * UI_SCALE;
+        return 16 * UI_SCALE + Math.max(WHITEBOARD_HEIGHT * PORTRAIT.whiteboardScale, leftColumn) + PORTRAIT.topBarGap * UI_SCALE;
+    }
+
+    /**
+     * Whether a boss's message (the first-day guide or one of the two later tips) will be shown on this
+     * truck. The portrait layout reserves a band under the top bar for the boss's panel on exactly
+     * those trucks (they are small boards), because there is no free side of the screen to put it on.
+     *
+     * @returns {boolean}
+     */
+    isGuidePlanned ()
+    {
+        const r = this.registry;
+        const ftue = this.truckIndex === 0 && this.levelIndex === 0 && !r.get('ftueDone');
+        const workload = this.levelIndex === 0 && this.truckIndex === 1 && !r.get('workloadTipDone');
+        const hint = this.levelIndex === 1 && this.truckIndex === 1 && !r.get('hintTipDone');
+        return ftue || workload || hint;
+    }
+
+    /**
+     * Decides how the parcels sit in the portrait TRAY and how big the tray is. The tray is the hand-made
+     * conveyor-belt painting (assets/mobile/conveyor-belt-portrait): one wide dark surface in a metal frame,
+     * drawn here as a 9-slice so its middle can be stretched TALLER to hold one to three rows of parcels
+     * (the frame's rails and corners never stretch).
+     *
+     * The fewest rows (up to PORTRAIT.maxLanes) that keep the parcels at least PORTRAIT.trayMinCell wide per
+     * cell win, since fewer rows leave more room for the truck. Sizes here are planned at the tray cell size;
+     * layoutPortraitTray applies the same row split to the real pieces once the board's cell size is known.
+     *
+     * @param {Object} truck - the truck's puzzle ({ pieces, rows, cols, ... }).
+     * @returns {{rowCount: number, artScale: number, trayWidth: number, trayHeight: number, surfaceHeight: number,
+     *   rowBand: number, usableWidth: number}}
+     *   artScale = screen px per art pixel of the tray picture; surfaceHeight = the dark surface's height after
+     *   stretching; rowBand = the height each row of parcels gets; usableWidth = how wide a row may be.
+     */
+    planPortraitTray (truck)
+    {
+        const S = UI_SCALE;
+        const art = PORTRAIT.tray;
+        const trayWidth = this.scale.width - 2 * PORTRAIT.trayMargin * S;
+        const artScale = trayWidth / art.width;
+        const usableWidth = (art.surfaceRight - art.surfaceLeft) * artScale - 2 * PORTRAIT.trayPad * S;
+        const naturalSurfaceHeight = (art.surfaceBottom - art.surfaceTop) * artScale;
+
+        const trayCell = PORTRAIT.trayCell * S;
+        const sizes = truck.pieces.map((shapeId) => {
+            const bounds = getShapeBounds(shapeId);
+            return { width: bounds.cols * trayCell, height: bounds.rows * trayCell };
+        });
+        const tallest = Math.max(...sizes.map((size) => size.height));
+        const rowPad = PORTRAIT.trayRowPad * S;
+        const maxSurface = PORTRAIT.trayMaxSurface * S;
+
+        // Try one row, then two, then three; stop at the first that keeps the parcels big enough.
+        let chosen = null;
+        const rowLimit = Math.min(PORTRAIT.maxLanes, sizes.length);
+        for (let rows = 1; rows <= rowLimit; rows++)
+        {
+            const layout = computeTrayRows(
+                sizes,
+                { usableWidth, maxScale: 1, minScale: 0.3, maxHeight: Math.max(1, maxSurface / rows - rowPad), gap: TRAY_PIECE_GAP, maxOverlapFraction: 0, maxOverlapPx: 0 },
+                rows
+            );
+            chosen = { rows: layout.rows.length, scale: layout.scale };
+            if (layout.scale * PORTRAIT.trayCell >= PORTRAIT.trayMinCell)
+            {
+                break;
+            }
+        }
+
+        // The surface is as tall as its rows need, but never shorter than the picture's own (so the tray
+        // never looks squashed); each row gets an equal band of it.
+        const surfaceHeight = Math.max(naturalSurfaceHeight, chosen.rows * (tallest * chosen.scale + rowPad));
+        const trayHeight = (art.surfaceTop + (art.height - art.surfaceBottom)) * artScale + surfaceHeight;
+        return { rowCount: chosen.rows, artScale, trayWidth, trayHeight, surfaceHeight, rowBand: surfaceHeight / chosen.rows, usableWidth };
+    }
+
+    /**
+     * Draws the portrait tray along the bottom of the screen: the conveyor-belt painting as a 9-slice at the
+     * size the plan asks for, centred, a small gap above the bottom edge.
+     *
+     * @param {ReturnType<PuzzleScene['planPortraitTray']>} plan
+     * @returns {number} the y of the tray's top edge (the truck must stay above it).
+     */
+    addPortraitTray (plan)
+    {
+        const S = UI_SCALE;
+        const art = PORTRAIT.tray;
+        const left = (this.scale.width - plan.trayWidth) / 2;
+        const top = this.scale.height - PORTRAIT.trayBottomGap * S - plan.trayHeight;
+        const heightInArt = plan.trayHeight / plan.artScale;
+        // The 9-slice margins: the sides never stretch (the frame is slanted), the top rail and the bottom
+        // rail (with its rivets) never stretch; only the dark surface between them does.
+        this.belt = this.add
+            .nineslice(left, top, 'conveyor-belt-portrait', undefined, art.width, heightInArt, art.sliceSide, art.sliceSide, art.surfaceTop, art.height - art.surfaceBottom)
+            .setOrigin(0, 0)
+            .setScale(plan.artScale)
+            .setDepth(BELT_DEPTH);
+        /** Where the tray's dark surface starts (screen y), for placing the rows, and the tray's top edge. */
+        this.traySurfaceTop = top + art.surfaceTop * plan.artScale;
+        this.trayTop = top;
+        return top;
+    }
+
+    /**
+     * Puts the parcels in the portrait tray: the same row split the plan chose, every parcel the same
+     * size, each row centred in its band of the dark surface. Records every piece's home spot, as the
+     * landscape tray does.
+     *
+     * @param {PieceView[]} views - the tray's pieces, in the puzzle's order.
+     */
+    layoutPortraitTray (views)
+    {
+        const plan = this.trayPlan;
+        const tray = computeTrayRows(
+            views.map((view) => ({ width: view.pixelWidth, height: view.pixelHeight })),
+            {
+                usableWidth: plan.usableWidth,
+                maxScale: Math.min(1, PORTRAIT.trayCell * UI_SCALE / this.cellSize),
+                minScale: 0.1,
+                maxHeight: plan.rowBand - PORTRAIT.trayRowPad * UI_SCALE,
+                gap: TRAY_PIECE_GAP,
+                maxOverlapFraction: 0,
+                maxOverlapPx: 0,
+            },
+            plan.rowCount
+        );
+
+        tray.rows.forEach((row, rowIndex) => {
+            const centerY = this.traySurfaceTop + (rowIndex + 0.5) * plan.rowBand;
+            const rowLeft = (this.scale.width - row.rowWidth) / 2;
+            row.indices.forEach((pieceIndex, position) => {
+                const view = views[pieceIndex];
+                view.setTrayScale(tray.scale);
+                const homeX = rowLeft + row.lefts[position];
+                const homeY = centerY - (view.pixelHeight * tray.scale) / 2;
+                view.container.setPosition(homeX, homeY);
+                view.homeX = homeX;
+                view.homeY = homeY;
+                view.trayDepth = pieceIndex + 1;
+                view.container.setDepth(view.trayDepth);
+            });
+        });
+    }
+
     /**
      * Creates the top-left HUD: a column of square icon buttons - Pause, then (from level 2)
      * Hint, then Reset - with the money panel to the right of Pause on the top row. The money
@@ -808,14 +1134,17 @@ export class PuzzleScene extends Scene
         // copy, so it's always correct immediately on a fresh PuzzleScene instance and carries over
         // from day to day.
         const money = getEconomyState(this.registry).money;
+        // The icon buttons' size (portrait: finger-sized) and the hint badge's radius, used by layoutHud and the hint guide.
+        this.hudButtonSize = this.portrait ? PORTRAIT.hudButton * UI_SCALE : HUD_BUTTON_SIZE;
+        this.hintBadgeRadius = this.portrait ? 15 * UI_SCALE : HINT_BADGE_RADIUS;
         // The money counter (cash icon panel with the total on it), shared with the shop - see
         // objects/MoneyHud.js. At scale 1 it is the same height as the icon buttons beside it.
-        this.moneyHud = new MoneyHud(this, money);
+        this.moneyHud = new MoneyHud(this, money, this.portrait ? PORTRAIT.moneyScale : 1);
 
         const makeIconButton = (textureKey, onClick, onPress) => {
             const button = this.add
                 .image(0, 0, textureKey)
-                .setDisplaySize(HUD_BUTTON_SIZE, HUD_BUTTON_SIZE)
+                .setDisplaySize(this.hudButtonSize, this.hudButtonSize)
                 .setInteractive({ useHandCursor: true });
             // Registered before makePressable so a press or hover starts from the button's normal
             // size, not a mid-pulse one (see stopHintPulse).
@@ -856,12 +1185,12 @@ export class PuzzleScene extends Scene
             // The hint-count circle on the button's top-right corner (positioned in layoutHud).
             const circle = this.add.graphics();
             const label = this.add
-                .text(0, 0, '1', { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 14 * UI_SCALE, color: '#ffffff' })
+                .text(0, 0, '1', { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: (this.portrait ? 20 : 14) * UI_SCALE, color: '#ffffff' })
                 .setOrigin(0.5);
             // A plus for "none left" (it opens the buy-another-hint popup): two white strokes.
             const plus = this.add.graphics();
             plus.lineStyle(2.5 * UI_SCALE, 0xffffff, 1);
-            const arm = HINT_BADGE_RADIUS * 0.5;
+            const arm = this.hintBadgeRadius * 0.5;
             plus.lineBetween(-arm, 0, arm, 0);
             plus.lineBetween(0, -arm, 0, arm);
             const container = this.add.container(0, 0, [circle, label, plus]).setDepth(5);
@@ -882,7 +1211,11 @@ export class PuzzleScene extends Scene
     {
         const gap = 8 * UI_SCALE;
         const margin = 16 * UI_SCALE;
+        const size = this.hudButtonSize;
 
+        // Landscape: the buttons stack down the left edge. Portrait: they sit in a row along the top
+        // (a column would eat the truck's width), with the money panel after them, level with the row.
+        let x = margin;
         let y = margin;
         for (const button of [this.pauseButton, this.hintButton, this.resetButton])
         {
@@ -891,17 +1224,30 @@ export class PuzzleScene extends Scene
                 continue;
             }
             // The buttons are positioned by their centres (so the press squash is centred).
-            button.setPosition(margin + HUD_BUTTON_SIZE / 2, y + HUD_BUTTON_SIZE / 2);
+            button.setPosition(x + size / 2, y + size / 2);
             if (button === this.hintButton && this.hintBadge)
             {
                 // Overlapping the button's top-right corner.
-                this.hintBadge.container.setPosition(button.x + HUD_BUTTON_SIZE / 2 - 4 * UI_SCALE, button.y - HUD_BUTTON_SIZE / 2 + 4 * UI_SCALE);
+                this.hintBadge.container.setPosition(button.x + size / 2 - 4 * UI_SCALE, button.y - size / 2 + 4 * UI_SCALE);
             }
-            y += HUD_BUTTON_SIZE + gap;
+            if (this.portrait)
+            {
+                x += size + gap;
+            }
+            else
+            {
+                y += size + gap;
+            }
         }
 
+        if (this.portrait)
+        {
+            // Under the button row, left-aligned with it.
+            this.moneyHud.setPosition(margin, margin + size + gap);
+            return;
+        }
         // The money panel: level with the top button (Pause), just to its right.
-        const panelX = margin + HUD_BUTTON_SIZE + gap;
+        const panelX = margin + size + gap;
         this.moneyHud.setPosition(panelX, margin);
     }
 
@@ -914,10 +1260,22 @@ export class PuzzleScene extends Scene
     guidePanelSpace (truckRight)
     {
         const S = UI_SCALE;
+        if (this.portrait)
+        {
+            // Portrait: a wide, short panel (head on the left, text on the right) in the band that was
+            // reserved for it between the top bar and the truck (see isGuidePlanned).
+            const barBottom = this.portraitTopBarHeight();
+            return {
+                left: 16 * S,
+                width: this.scale.width - 32 * S,
+                centerY: barBottom + (PORTRAIT.guideBand * S) / 2,
+                layout: 'horizontal',
+            };
+        }
         const left = truckRight + 30 * S;
         // Never narrower than 260 design px, even beside a wide truck (it then overlaps the truck's shadow, not its board).
         const width = Math.max(260 * S, Math.min(430 * S, this.scale.width - 24 * S - left));
-        return { left: Math.min(left, this.scale.width - 24 * S - width), width };
+        return { left: Math.min(left, this.scale.width - 24 * S - width), width, centerY: PANEL_CENTER_Y * S, layout: 'vertical' };
     }
 
     /**
@@ -932,8 +1290,8 @@ export class PuzzleScene extends Scene
      */
     showTip (truckRight, message, onGone, placement = null)
     {
-        const { left, width, centerY } = placement ?? { ...this.guidePanelSpace(truckRight), centerY: PANEL_CENTER_Y * UI_SCALE };
-        const panel = new BossPanel(this, { left, centerY, width });
+        const { left, width, centerY, layout } = placement ?? this.guidePanelSpace(truckRight);
+        const panel = new BossPanel(this, { left, centerY, width, layout });
         panel.show(message);
         panel.popIn();
         // About 2 seconds plus 45 ms a character, at most 8 seconds.
@@ -1002,8 +1360,9 @@ export class PuzzleScene extends Scene
             truckRight,
             'You can get help but only once per puzzle.',
             () => this.endHintGuide(),
-            // Just right of the HUD buttons, and high up, level with the Hint button.
-            { left: this.hintButton.x + (HUD_BUTTON_SIZE / 2) + 28 * S, width: 400 * S, centerY: 240 * S }
+            // Just right of the HUD buttons, and high up, level with the Hint button. (Portrait has no
+            // free side: the panel goes in the band reserved under the top bar, like every other tip.)
+            this.portrait ? null : { left: this.hintButton.x + (HUD_BUTTON_SIZE / 2) + 28 * S, width: 400 * S, centerY: 240 * S }
         );
     }
 
@@ -1019,7 +1378,7 @@ export class PuzzleScene extends Scene
         const S = UI_SCALE;
         this.hintGuideActive = true;
         this.startHintGuidePulse();
-        const size = HUD_BUTTON_SIZE * 1.5;
+        const size = this.hudButtonSize * 1.5;
         const halo = this.add.graphics().setDepth(-1);
         halo.fillStyle(0xffd34d, 0.8);
         halo.fillRoundedRect(-size / 2, -size / 2, size, size, 16 * S);
@@ -1081,7 +1440,7 @@ export class PuzzleScene extends Scene
             return;
         }
         const S = UI_SCALE;
-        const r = HINT_BADGE_RADIUS;
+        const r = this.hintBadgeRadius;
         const hintsLeft = this.hintUsed ? 0 : 1;
         const { circle, label, plus } = this.hintBadge.parts;
         circle.clear();
@@ -1106,9 +1465,13 @@ export class PuzzleScene extends Scene
             return;
         }
         // Above the first-day guide's dimming (2000) and its panel (2001), and the day-start popup.
+        // Landscape: the bottom-right corner. Portrait: that corner is the tray full of parcels, so
+        // the button goes just above it, at the right (the truck zone's lower-right corner).
+        const lanesTop = this.portrait ? this.trayTop : 0;
         this.skipButton = addSkipButton(this, {
-            x: this.scale.width - 100 * S,
-            y: this.scale.height - 48 * S,
+            x: this.scale.width - (this.portrait ? 120 : 100) * S,
+            y: this.portrait ? lanesTop - 56 * S : this.scale.height - 48 * S,
+            height: this.portrait ? 76 : undefined,
             depth: 2100,
             onSkip: () => this.skipTutorial(),
         });
@@ -1146,11 +1509,12 @@ export class PuzzleScene extends Scene
     startFtue (truckRight)
     {
         const S = UI_SCALE;
-        const { left, width } = this.guidePanelSpace(truckRight);
+        const { left, width, centerY, layout } = this.guidePanelSpace(truckRight);
         this.ftue = new FtueGuide(this, {
             left,
-            centerY: PANEL_CENTER_Y * S,
+            centerY,
             width,
+            layout,
             onHighlight: () => this.showFtueHighlight(),
             onClearHighlight: () => this.clearFtueHighlight(),
             onDone: () => {
@@ -1303,6 +1667,7 @@ export class PuzzleScene extends Scene
                 const purchase = purchaseHint(getEconomyState(this.registry), day, economy);
                 if (purchase.ok)
                 {
+                    trackHintUsed(day, this.truckIndex); // analytics: a PAID hint (the free one is not tracked)
                     setEconomyState(this.registry, purchase.state);
                     this.moneyHud.setAmount(purchase.state.money);
                     this.layoutHud();
@@ -1406,6 +1771,14 @@ export class PuzzleScene extends Scene
     wireDragEvents ()
     {
         this.input.on('dragstart', (pointer, gameObject) => {
+            // A parcel being picked up stops its hover grow-and-lift (and stays out of it while it is carried).
+            const picked = gameObject.getData('pieceView');
+            if (picked)
+            {
+                picked.held = true;
+                picked.stopHover();
+            }
+
             // Draw the piece being dragged above every other piece and the board, so it
             // visibly sits "in hand" rather than being occluded while moving over them.
             gameObject.setDepth(DRAG_DEPTH);
@@ -1443,7 +1816,10 @@ export class PuzzleScene extends Scene
             }
 
             gameObject.x = dragX;
-            gameObject.y = dragY;
+            // A finger covers the parcel it is carrying, so under a touch the parcel is held a little above
+            // it (a mouse pointer is thin and is left exactly where it is). Ghost preview and drop both use
+            // the parcel's own position, so what the player sees is what is placed.
+            gameObject.y = dragY - (pointer.wasTouch ? PORTRAIT.touchLift * UI_SCALE : 0);
 
             // The container's (x, y) is this piece's bounding-box top-left in world
             // space (see PieceView's class doc) — the same convention core/Placement.js
@@ -1464,6 +1840,10 @@ export class PuzzleScene extends Scene
 
         this.input.on('dragend', (pointer, gameObject) => {
             const pieceView = gameObject.getData('pieceView');
+            if (pieceView)
+            {
+                pieceView.held = false;
+            }
             this.gridView.clearGhost();
 
             if (!pieceView || pieceView.isPlaced)
@@ -1565,6 +1945,11 @@ export class PuzzleScene extends Scene
         {
             return;
         }
+        // Analytics: only a reset that actually took parcels off the board counts.
+        if (this.pieceViews.some((view) => view.isPlaced))
+        {
+            trackReset(this.levelIndex + 1, this.truckIndex);
+        }
 
         for (const pieceView of this.pieceViews)
         {
@@ -1621,13 +2006,16 @@ export class PuzzleScene extends Scene
      */
     createPauseMenu ()
     {
-        const S = UI_SCALE;
+        // On a phone the whole menu is drawn 1.25x bigger (k) so its buttons are comfortable to tap; in
+        // landscape k is exactly 1 and every number below is the original.
+        const k = this.portrait ? 1.25 : 1;
+        const S = UI_SCALE * k;
         const centerX = this.scale.width / 2;
         const centerY = this.scale.height / 2;
 
         // Picture buttons (labels painted in), both the same height.
         const makeButton = (y, texture, onClick, delay, height = 76) => {
-            const button = addImageButton(this, centerX, y, texture, height);
+            const button = addImageButton(this, centerX, y, texture, height * k);
             makePressable(this, button, onClick, { delay });
             return button;
         };
@@ -1661,14 +2049,17 @@ export class PuzzleScene extends Scene
 
         // Two square toggles under the buttons: music, then sound effects. The state lives in audio.js
         // (so it outlasts this menu, which is rebuilt each time) and each toggle starts from it.
+        // (Bigger on a phone: a 68-px toggle is only ~37 css px there.)
+        const toggleSize = 68 * k;
+        const toggleGap = 44 * k;
         const toggles = [
             // A mute toggle is saved the moment it is flipped (saveMute rewrites the last saved state
             // with the new mute choice and nothing else).
-            addAudioToggle(this, centerX - 44 * S, centerY + 226 * S, 68, 'music', isMusicMuted(), (muted) => {
+            addAudioToggle(this, centerX - toggleGap * UI_SCALE, centerY + 226 * S, toggleSize, 'music', isMusicMuted(), (muted) => {
                 setMusicMuted(muted);
                 saveMute();
             }),
-            addAudioToggle(this, centerX + 44 * S, centerY + 226 * S, 68, 'sfx', isSfxMuted(), (muted) => {
+            addAudioToggle(this, centerX + toggleGap * UI_SCALE, centerY + 226 * S, toggleSize, 'sfx', isSfxMuted(), (muted) => {
                 setSfxMuted(muted);
                 saveMute();
             }),
@@ -1678,7 +2069,14 @@ export class PuzzleScene extends Scene
             makePressable(this, button, () => { toggle(); });
         }
 
-        this.pauseOverlay = this.add.container(0, 0, [blocker, panel, title, resume, shop, decorate, quit, ...toggles.map(({ button }) => button)]).setDepth(PAUSE_DEPTH);
+        // Red dots on Shop (something is affordable right now) and Decorate (a new item in the inventory), as on
+        // the end-of-day screen. They are part of the overlay so they come and go with the menu; the container is
+        // at 0,0 so their screen positions are unchanged.
+        const wallet = getEconomyState(this.registry);
+        const shopDot = addBadgeToImage(this, shop, shopHasBuyable(this.levelIndex + 1, wallet, economy));
+        const decorateDot = addBadgeToImage(this, decorate, apartmentHasNew(wallet.ownedItems, this.registry.get('seenItems') ?? []));
+
+        this.pauseOverlay = this.add.container(0, 0, [blocker, panel, title, resume, shop, decorate, shopDot, decorateDot, quit, ...toggles.map(({ button }) => button)]).setDepth(PAUSE_DEPTH);
     }
 
     /**
@@ -1715,6 +2113,7 @@ export class PuzzleScene extends Scene
         const day = this.levelIndex + 1;
         const tier = this.truck.difficulty;
         const reward = this.isOvertime ? overtimePay(tier, day, economy) : payForTruck(tier, day, economy);
+        trackTruckComplete(day, this.truckIndex, tier); // analytics: the grid is full
 
         // The paycheck gets a line for this truck; the wallet gets the money.
         this.registry.set('dayTruckLog', [...(this.registry.get('dayTruckLog') ?? []), { tier, amount: reward, overtime: this.isOvertime }]);
@@ -1751,30 +2150,48 @@ export class PuzzleScene extends Scene
         // Close the truck (the shutter rolls down over the board and the parcels), and only then
         // show the overlay. Input is switched off meanwhile, or a parcel could be picked up off
         // the board while the shutter is coming down.
-        this.input.enabled = false;
-        this.closeTruck(() => {
-            if (this.isOvertime)
-            {
-                this.finishDay();
-            }
-            else if (isLastRegularTruck)
-            {
-                const offer = overtimeOffer(day, economy);
-                if (offer)
-                {
-                    this.offerOvertime(offer);
-                }
-                else
+        const closeAndRoute = () => {
+            this.input.enabled = false;
+            this.closeTruck(() => {
+                if (this.isOvertime)
                 {
                     this.finishDay();
                 }
-            }
-            else
+                else if (isLastRegularTruck)
+                {
+                    const offer = overtimeOffer(day, economy);
+                    if (offer)
+                    {
+                        this.offerOvertime(offer);
+                    }
+                    else
+                    {
+                        this.finishDay();
+                    }
+                }
+                else
+                {
+                    // Straight on to the next truck of the day - no overlay in between.
+                    this.scene.start('PuzzleScene', { levelIndex: this.levelIndex, truckIndex: this.truckIndex + 1 });
+                }
+            });
+        };
+
+        // First-day guide still talking (the first truck is tiny, so it can be solved before the player has pressed
+        // Next on every message): show the pay message first and close the truck after Okay. Input stays on for the
+        // panel's button, so the solved parcels are made untouchable instead.
+        if (this.ftue)
+        {
+            for (const view of this.pieceViews)
             {
-                // Straight on to the next truck of the day - no overlay in between.
-                this.scene.start('PuzzleScene', { levelIndex: this.levelIndex, truckIndex: this.truckIndex + 1 });
+                view.container.disableInteractive?.();
             }
-        });
+            this.ftue.finishThen(closeAndRoute);
+        }
+        else
+        {
+            closeAndRoute();
+        }
     }
 
     /**
@@ -1883,8 +2300,10 @@ export class PuzzleScene extends Scene
      * size of the largest board) slides down over the board and the parcels in it, then rests
      * briefly, then `onDone` is called.
      *
-     * The shutter is bigger than or equal to any board, so instead of resizing it, it is
-     * CROPPED to the board's opening: as it slides, only the part of the image that is inside the
+     * The shutter is normally as big as the biggest landscape board (360 design px), so instead of resizing it, it is
+     * CROPPED to the board's opening. A phone's boards are bigger than that (up to ~600 wide, ~700 tall), so the
+     * shutter is then scaled UP (never down) until it is at least as big as the opening in both directions -
+     * otherwise it would be too short and cut off at the top as it came down. The crop works as follows: as it slides, only the part of the image that is inside the
      * opening is shown. It starts with its bottom edge at the top of the opening (nothing visible)
      * and ends with its bottom edge - the handle - at the bottom of the opening, covering it.
      *
@@ -1897,7 +2316,10 @@ export class PuzzleScene extends Scene
         const openingWidth = this.gridView.pixelWidth;
         const openingHeight = this.gridView.pixelHeight;
 
-        const shutter = this.add.image(0, 0, 'truck-shutter').setOrigin(0, 0).setScale(ART_SCALE).setDepth(SHUTTER_DEPTH);
+        const shutter = this.add.image(0, 0, 'truck-shutter').setOrigin(0, 0).setDepth(SHUTTER_DEPTH);
+        // Screen px per art px: the normal size, or bigger when the opening is bigger than the art would cover.
+        const shutterScale = Math.max(ART_SCALE, Math.max(openingWidth, openingHeight) / shutter.width);
+        shutter.setScale(shutterScale);
         const size = shutter.displayWidth; // the shutter is square
         const left = openingX + openingWidth / 2 - size / 2;
         this.shutter = shutter;
@@ -1915,10 +2337,10 @@ export class PuzzleScene extends Scene
             shutter.setVisible(true);
             // setCrop works in the image's own (art) pixels, measured from its top-left corner.
             shutter.setCrop(
-                (openingX - left) / ART_SCALE,
-                (visibleTop - y) / ART_SCALE,
-                openingWidth / ART_SCALE,
-                (visibleBottom - visibleTop) / ART_SCALE
+                (openingX - left) / shutterScale,
+                (visibleTop - y) / shutterScale,
+                openingWidth / shutterScale,
+                (visibleBottom - visibleTop) / shutterScale
             );
         };
 

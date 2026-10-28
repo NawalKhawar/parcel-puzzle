@@ -44,6 +44,16 @@ describe('mergeSave - good saves', () => {
         assert.equal(merged.money, 340);
     });
 
+    test('the red-dot "seen" list and the phone room arrangement are saved, and an older save counts what it owns as seen', () => {
+        const merged = mergeSave({ ...sampleSave(), seenItems: ['item-a'], placedItemsPortrait: [{ id: 'item-b', x: 2, y: 6 }] });
+        assert.deepEqual(merged.seenItems, ['item-a']);
+        assert.deepEqual(merged.placedItemsPortrait, [{ id: 'item-b', x: 2, y: 6 }]);
+        const older = mergeSave(sampleSave()); // no seenItems / placedItemsPortrait fields
+        assert.deepEqual(older.seenItems, ['item-a', 'item-b'], 'nothing owned shows as new after an upgrade');
+        assert.deepEqual(older.placedItemsPortrait, []);
+        assert.deepEqual(mergeSave({ v: 1, ownedItems: ['x'], seenItems: 'oops' }).seenItems, [], 'a damaged list is reset');
+    });
+
     test('the new-game defaults are themselves a valid save', () => {
         assert.deepEqual(mergeSave(defaultSaveState()), defaultSaveState());
     });

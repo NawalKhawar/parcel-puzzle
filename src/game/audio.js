@@ -189,3 +189,151 @@ export function resumeBgm(key)
         currentBgm.resume();
     }
 }
+
+// ------------------------------------------------------------------ making sure the sound can start
+
+/**
+ * Taps / clicks / key presses that browsers accept as "the player wants sound now". The list is wide on
+ * purpose: which of them counts differs between Chrome, Firefox and Safari, on desktop and on phones.
+ */
+const UNLOCK_GESTURES = ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click', 'keydown'];
+
+/** The most recent reason the browser refused to start the audio, for the ?audiodebug=1 overlay. */
+let lastResumeProblem = '';
+
+/**
+ * Restarts the current background music if it is supposed to be playing but is silent - for example a
+ * track that was asked for while the browser still blocked audio, and was not picked up when it unlocked.
+ * A track that is merely paused (under a jingle) or muted (it plays on silently) is left alone.
+ */
+function restartMusicIfSilent()
+{
+    if (currentBgm && !currentBgm.isPlaying && !currentBgm.isPaused)
+    {
+        currentBgm.play();
+    }
+}
+
+/**
+ * Makes the game's sound start reliably on every browser and phone. Call it once, as soon as the game
+ * exists (main.js).
+ *
+ * Browsers keep the audio switched off until the player taps or clicks, and Phaser's own unlock gives up
+ * for good after ONE refused attempt (on a phone the first event is often touchstart, which some browsers
+ * refuse, and Phaser then removes all its listeners and never tries again - the game stays silent
+ * forever). So this adds a second, patient unlock that:
+ *
+ *   - retries on EVERY tap / click / key press until the audio is really running (and keeps listening
+ *     afterwards at no cost, in case the browser suspends it again);
+ *   - resumes the audio when the tab comes back to the front, the page is restored, or the window regains
+ *     focus (a phone call, a locked screen and an alt-tab all suspend it);
+ *   - tells Phaser the unlock happened (so sounds that were waiting start) and restarts music that is
+ *     silent when it should not be;
+ *   - on iPhones / iPads (Safari 16.4+) asks for the "playback" audio session, so the sound is NOT muted
+ *     by the ring / silent switch.
+ *
+ * Add ?audiodebug=1 to the page address to see a live status box (handy on a phone, which has no console).
+ *
+ * @param {import('phaser').Game} game
+ */
+export function installAudioUnlock(game)
+{
+    const manager = game.sound;
+    const context = manager && manager.context;
+    if (!context)
+    {
+        // No Web Audio in this browser (Phaser fell back to plain audio tags): nothing more to do here.
+        return;
+    }
+
+    try
+    {
+        if (navigator.audioSession)
+        {
+            navigator.audioSession.type = 'playback';
+        }
+    }
+    catch
+    {
+        // An older browser without the audio-session setting: the ring / silent switch may mute the game.
+    }
+
+    /** The audio is running: let Phaser release the sounds that were waiting, then make sure music plays. */
+    const onRunning = () =>
+    {
+        if (context.state !== 'running')
+        {
+            return;
+        }
+        lastResumeProblem = '';
+        if (manager.locked)
+        {
+            // Phaser's own bookkeeping: its next update emits "unlocked" and starts anything that waited.
+            manager.unlocked = true;
+        }
+        window.setTimeout(restartMusicIfSilent, 250);
+    };
+
+    /** Asks the browser to start / restart the audio (a no-op while it is running). */
+    const tryResume = () =>
+    {
+        if (context.state === 'running')
+        {
+            return;
+        }
+        try
+        {
+            const attempt = context.resume();
+            if (attempt && attempt.then)
+            {
+                attempt.then(onRunning, (error) => { lastResumeProblem = String(error && error.message ? error.message : error); });
+            }
+        }
+        catch (error)
+        {
+            lastResumeProblem = String(error && error.message ? error.message : error);
+        }
+    };
+
+    for (const type of UNLOCK_GESTURES)
+    {
+        window.addEventListener(type, tryResume, { capture: true, passive: true });
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { tryResume(); } });
+    window.addEventListener('pageshow', tryResume);
+    window.addEventListener('focus', tryResume);
+    // Also covers the audio starting through Phaser's own unlock.
+    context.addEventListener('statechange', onRunning);
+
+    installAudioDebug(game);
+}
+
+/**
+ * The ?audiodebug=1 overlay: a small box in the corner showing whether the audio is running, what Phaser
+ * thinks is playing and the mute switches - so "there is no sound" can be diagnosed on a phone.
+ *
+ * @param {import('phaser').Game} game
+ */
+function installAudioDebug(game)
+{
+    if (!new URLSearchParams(window.location.search).has('audiodebug'))
+    {
+        return;
+    }
+    const manager = game.sound;
+    const box = document.createElement('pre');
+    box.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;margin:0;padding:6px 8px;max-width:100vw;' +
+        'background:rgba(0,0,0,0.78);color:#7CFC7C;font:11px/1.35 monospace;white-space:pre-wrap;pointer-events:none';
+    document.body.appendChild(box);
+    window.setInterval(() =>
+    {
+        const playing = manager.sounds.filter((sound) => sound.isPlaying).map((sound) => sound.key).join(', ') || 'nothing';
+        const decoded = ['title-bgm', 'gameplay-bgm', 'pop', 'cash-register'].map((key) => `${key}:${game.cache.audio.exists(key) ? 'ok' : 'MISSING'}`).join(' ');
+        box.textContent =
+            `audio context: ${manager.context.state}   Phaser locked: ${manager.locked}\n` +
+            `music muted: ${musicMuted}   sound effects muted: ${sfxMuted}   master mute: ${manager.mute}\n` +
+            `playing: ${playing}\n` +
+            `files: ${decoded}\n` +
+            `last problem: ${lastResumeProblem || 'none'}   (tap the screen if the context is not running)`;
+    }, 400);
+}

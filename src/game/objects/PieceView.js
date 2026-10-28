@@ -2,6 +2,7 @@ import { Geom } from 'phaser';
 
 import { getShapeCells, getShapeBounds } from '../../core/Shape.js';
 import { UI_SCALE } from '../uiScale.js';
+import { isPortrait } from '../layout.js';
 
 /**
  * PieceView.js
@@ -39,6 +40,16 @@ import { UI_SCALE } from '../uiScale.js';
  *  screen regardless of how many real pixels back each piece. */
 const HIT_AREA_PADDING = 6 * UI_SCALE;
 
+/** The same, on the portrait (phone) layout: a fingertip is much less precise than a mouse pointer. */
+const HIT_AREA_PADDING_PORTRAIT = 14 * UI_SCALE;
+
+/** HOVER: a parcel resting in the tray grows by this factor while the mouse is over it (and comes to the
+ *  front, so it is not hidden by its neighbours), and eases back when the mouse leaves. */
+const HOVER_GROW = 1.14;
+const HOVER_MS = 110;
+/** Draw depth of a hovered parcel: above its tray neighbours, far below a carried parcel (500). */
+const HOVER_DEPTH = 300;
+
 export class PieceView
 {
     /**
@@ -55,6 +66,8 @@ export class PieceView
     constructor (scene, x, y, shapeId, cellSize, placementId)
     {
         this.scene = scene;
+        /** How far a tray parcel's grab area extends past its cells (bigger on a phone). */
+        this.hitPadding = isPortrait(scene) ? HIT_AREA_PADDING_PORTRAIT : HIT_AREA_PADDING;
         this.x = x;
         this.y = y;
         this.shapeId = shapeId;
@@ -78,8 +91,98 @@ export class PieceView
 
         this.container = scene.add.container(x, y);
 
+        /** True while the player is carrying this parcel (set by PuzzleScene); a carried parcel never hovers. */
+        this.held = false;
+        /** The running grow / shrink tween of the hover, if any. */
+        this.hoverTween = null;
+
         this.draw();
         this.makeDraggable();
+        this.wireHover();
+    }
+
+    /**
+     * The tray hover: when a MOUSE pointer moves over a parcel resting in the tray it grows a little (around
+     * its own middle) and comes to the front; when the pointer leaves it eases back. Registered once, in the
+     * constructor, because makeDraggable() runs again after every pause. A touch never hovers (the parcel
+     * would stay grown after a tap, with no pointer to leave it), and neither does a parcel on the board
+     * or one that is being carried.
+     */
+    wireHover ()
+    {
+        this.container.on('pointerover', (pointer) => {
+            if (!pointer || !pointer.wasTouch)
+            {
+                this.hoverIn();
+            }
+        });
+        this.container.on('pointerout', () => this.hoverOut());
+    }
+
+    /** @returns {boolean} whether this parcel rests in the tray and can hover (it has a home spot, is not placed or carried). */
+    canHover ()
+    {
+        return !this.isPlaced && !this.held && this.homeX !== undefined && this.homeY !== undefined;
+    }
+
+    /** Grows the parcel round its middle and brings it to the front. */
+    hoverIn ()
+    {
+        if (!this.canHover())
+        {
+            return;
+        }
+        this.stopHover();
+        const scale = this.trayScale * HOVER_GROW;
+        // The container scales about its top-left corner, so its position moves back by half the growth to
+        // keep the parcel's middle where it was.
+        const growth = scale - this.trayScale;
+        this.container.setDepth(HOVER_DEPTH);
+        this.hoverTween = this.scene.tweens.add({
+            targets: this.container,
+            scaleX: scale,
+            scaleY: scale,
+            x: this.homeX - (growth * this.pixelWidth) / 2,
+            y: this.homeY - (growth * this.pixelHeight) / 2,
+            duration: HOVER_MS,
+            ease: 'Sine.easeOut',
+        });
+    }
+
+    /** Eases the parcel back to its resting size, place and place in the stack. */
+    hoverOut ()
+    {
+        if (!this.canHover() || !this.hoverTween)
+        {
+            return;
+        }
+        this.stopHover();
+        this.hoverTween = this.scene.tweens.add({
+            targets: this.container,
+            scaleX: this.trayScale,
+            scaleY: this.trayScale,
+            x: this.homeX,
+            y: this.homeY,
+            duration: HOVER_MS,
+            ease: 'Sine.easeOut',
+            onComplete: () => {
+                this.hoverTween = null;
+                this.container.setDepth(this.trayDepth ?? 0);
+            },
+        });
+    }
+
+    /**
+     * Stops a hover tween where it is (without moving anything back): used when the parcel is picked up,
+     * placed or sent home, so the tween cannot fight the code that then sets its size and position.
+     */
+    stopHover ()
+    {
+        if (this.hoverTween)
+        {
+            this.hoverTween.stop();
+            this.hoverTween = null;
+        }
     }
 
     /**
@@ -147,7 +250,7 @@ export class PieceView
         this.container.setInteractive(
             new Geom.Rectangle(0, 0, this.pixelWidth + displayOriginX * 2, this.pixelHeight + displayOriginY * 2),
             (area, x, y) => {
-                const pad = this.isPlaced ? 0 : HIT_AREA_PADDING;
+                const pad = this.isPlaced ? 0 : this.hitPadding;
                 const localX = x - displayOriginX;
                 const localY = y - displayOriginY;
                 return cells.some(
@@ -174,6 +277,7 @@ export class PieceView
      */
     markPlaced (row, col)
     {
+        this.stopHover();
         this.isPlaced = true;
         this.boardOrigin = { row, col };
         this.container.setScale(1);
@@ -187,6 +291,7 @@ export class PieceView
      */
     unlock ()
     {
+        this.stopHover();
         this.isPlaced = false;
         this.boardOrigin = null;
         this.container.setScale(this.trayScale);

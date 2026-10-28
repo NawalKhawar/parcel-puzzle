@@ -136,6 +136,9 @@ function captureState(registry)
     // The apartment's layout is kept as { [id]: { x, y } } (RoomLayout.serialize); the save stores a list.
     const layout = registry.get('apartmentLayout') ?? {};
     const placedItems = Object.entries(layout).map(([id, spot]) => ({ id, x: spot.x, y: spot.y }));
+    // The phone (portrait) room has its own arrangement (a different tile grid).
+    const portraitLayout = registry.get('apartmentLayoutPortrait') ?? {};
+    const placedItemsPortrait = Object.entries(portraitLayout).map(([id, spot]) => ({ id, x: spot.x, y: spot.y }));
 
     return {
         v: SAVE_VERSION,
@@ -148,6 +151,8 @@ function captureState(registry)
         // Written for information only; on load the rank is always worked out from the day.
         rank: rankForDay(day, economy).rank,
         placedItems,
+        placedItemsPortrait,
+        seenItems: [...(registry.get('seenItems') ?? [])],
         wallpaper: registry.get('apartmentWallpaper') ?? null,
         muted: { music: isMusicMuted(), sfx: isSfxMuted() },
         seenIntro: Boolean(registry.get('ftueDone')),
@@ -224,6 +229,8 @@ export function startNewGame(registry, { returning = false } = {})
 
     resetEconomy(registry);
     registry.set('apartmentLayout', {});
+    registry.set('apartmentLayoutPortrait', {});
+    registry.set('seenItems', []);
     registry.set('apartmentWallpaper', null);
     registry.set('ftueDone', false);
     for (const name of TIP_FLAGS)
@@ -280,6 +287,8 @@ export function continueGame(scene)
 
     setEconomyState(registry, { money: state.money, claimedBonuses: [...state.claimedBonuses], ownedItems: [...state.ownedItems] });
     registry.set('apartmentLayout', Object.fromEntries(state.placedItems.map(({ id, x, y }) => [id, { x, y }])));
+    registry.set('apartmentLayoutPortrait', Object.fromEntries(state.placedItemsPortrait.map(({ id, x, y }) => [id, { x, y }])));
+    registry.set('seenItems', [...state.seenItems]);
     registry.set('apartmentWallpaper', state.wallpaper);
     registry.set('ftueDone', state.seenIntro);
     for (const name of TIP_FLAGS)

@@ -135,3 +135,107 @@ describe('computeTrayLayout over every shipped puzzle', () => {
         assert.ok(smallest >= 0.6, `smallest relative scale ${smallest.toFixed(2)} is too small to grab comfortably`);
     });
 });
+
+// ------------------------------------------------------------------ several rows (portrait screens)
+
+import { computeTrayRows, planTrayRows } from '../../src/core/TrayLayout.js';
+
+describe('computeTrayRows - wrapping the parcels onto lanes', () => {
+    const rowOptions = { usableWidth: 600, maxScale: 1, minScale: 0.4, maxHeight: 200, gap: 8, maxOverlapFraction: 0.2, maxOverlapPx: 14 };
+
+    test('one row behaves like a single row (nothing wraps)', () => {
+        const rows = computeTrayRows([box(100), box(100), box(100)], rowOptions, 1);
+        assert.equal(rows.rows.length, 1);
+        assert.deepEqual(rows.rows[0].indices, [0, 1, 2]);
+        assert.equal(rows.scale, 1);
+    });
+
+    test('every piece lands on exactly one row, in the original order', () => {
+        const sizes = [140, 90, 200, 60, 150, 110, 80].map((w) => box(w));
+        for (const count of [1, 2, 3])
+        {
+            const rows = computeTrayRows(sizes, rowOptions, count);
+            assert.deepEqual(rows.rows.flatMap((row) => row.indices), [0, 1, 2, 3, 4, 5, 6]);
+        }
+    });
+
+    test('splits so the rows are as even as possible', () => {
+        // total 800 at 600 wide: one row would have to shrink; two rows of ~400 fit at full size
+        const sizes = Array.from({ length: 8 }, () => box(100));
+        const two = computeTrayRows(sizes, rowOptions, 2);
+        assert.deepEqual(two.rows.map((row) => row.indices.length), [4, 4]);
+        assert.equal(two.scale, 1);
+        assert.ok(computeTrayRows(sizes, rowOptions, 1).scale < 1);
+    });
+
+    test('all rows share one scale, and no row is wider than allowed when it fits', () => {
+        const sizes = [300, 250, 200, 280, 220, 260].map((w) => box(w));
+        const rows = computeTrayRows(sizes, rowOptions, 2);
+        for (const row of rows.rows)
+        {
+            assert.ok(row.rowWidth <= rowOptions.usableWidth + 1e-9, `row width ${row.rowWidth}`);
+        }
+        assert.equal(rows.fits, true);
+    });
+
+    test('pieces on a row never overlap (left edges respect widths and gaps)', () => {
+        const sizes = [120, 80, 150, 90, 70, 160].map((w) => box(w));
+        const rows = computeTrayRows(sizes, rowOptions, 2);
+        for (const row of rows.rows)
+        {
+            for (let i = 1; i < row.indices.length; i++)
+            {
+                const previousRight = row.lefts[i - 1] + sizes[row.indices[i - 1]].width * rows.scale;
+                assert.ok(row.lefts[i] >= previousRight + rowOptions.gap - 1e-9);
+            }
+        }
+    });
+
+    test('asking for more rows than pieces gives one piece per row at most', () => {
+        const rows = computeTrayRows([box(100), box(100)], rowOptions, 5);
+        assert.equal(rows.rows.length, 2);
+    });
+
+    test('no pieces: an empty layout', () => {
+        assert.deepEqual(computeTrayRows([], rowOptions, 2).rows, []);
+    });
+});
+
+describe('planTrayRows - how many lanes', () => {
+    const planOptions = { usableWidth: 648, maxScale: 1, minScale: 0.5, maxHeight: 200, gap: 8, maxOverlapFraction: 0, maxOverlapPx: 0 };
+
+    test('uses the fewest rows that keep the parcels at an acceptable size', () => {
+        const sizes = Array.from({ length: 5 }, () => box(100));
+        assert.equal(planTrayRows(sizes, planOptions, { maxRows: 3, acceptScale: 0.8 }).rowCount, 1);
+        const crowded = Array.from({ length: 10 }, () => box(100));
+        assert.equal(planTrayRows(crowded, planOptions, { maxRows: 3, acceptScale: 0.9 }).rowCount, 2);
+    });
+
+    test('falls back to the most rows allowed when nothing reaches the acceptable size', () => {
+        const huge = Array.from({ length: 12 }, () => box(260));
+        const plan = planTrayRows(huge, planOptions, { maxRows: 3, acceptScale: 1 });
+        assert.equal(plan.rowCount, 3);
+    });
+
+    test('every real puzzle in the game fits on at most 3 lanes at a readable size at a 648 px belt', () => {
+        const cell = 56;
+        let worst = 1;
+        let maxLanes = 0;
+        for (const level of data)
+        {
+            for (const slot of level.trucks)
+            {
+                for (const puzzle of slot.puzzles)
+                {
+                    const sizes = puzzle.pieces.map((id) => { const b = getShapeBounds(id); return { width: b.cols * cell, height: b.rows * cell }; });
+                    const plan = planTrayRows(sizes, planOptions, { maxRows: 3, acceptScale: 0.8 });
+                    worst = Math.min(worst, plan.scale);
+                    maxLanes = Math.max(maxLanes, plan.rowCount);
+                    assert.ok(plan.fits, `${puzzle.id} does not fit`);
+                }
+            }
+        }
+        assert.ok(worst * cell >= 40, `smallest tray cell is ${(worst * cell).toFixed(1)} px`);
+        assert.ok(maxLanes <= 3);
+    });
+});

@@ -21,7 +21,13 @@ parcel-puzzle/
 │   ├── characters/             The worker poses (worker-neutral/happy/happy2/celebrate/thinking).
 │   ├── truck/                  Truck frame + shutter, conveyor belt, side light, handlebars,
 │   │                           licence plate.
-│   ├── backgrounds/            Warehouse background, title screen, end-of-day clipboard.
+│   ├── backgrounds/            Warehouse background, title screen, end-of-day clipboard (landscape).
+│   ├── mobile/                 The hand-made PORTRAIT (phone) paintings, as WebP: title-bg-portrait,
+│   │                           gameplay-bg-portrait, promotion-portrait, bonus-portrait,
+│   │                           clipboard-screen-portrait (trimmed, alpha) and conveyor-belt-portrait (trimmed,
+│   │                           alpha: the one big tray), wall-portrait and floor-portrait (the phone apartment's room, only
+│   │                           a 760 px slice of each kept). Converted from assets-original/mobile/*.png by
+│   │                           scripts/convert-mobile-art.cjs. Everything else in assets/ is shared by both layouts.
 │   ├── ui/                     HUD icons and panels, the Start Packing button, the wood panel.
 │   ├── apartment/              The apartment: apartment-wall.png (448x96), apartment-floor.png
 │   │                           (448x256), and the furniture art as item-<id>.png.
@@ -38,6 +44,10 @@ parcel-puzzle/
 │
 ├── src/
 │   ├── main.js                 App bootstrap: waits for DOMContentLoaded, starts the Phaser game.
+│   ├── analytics.js            The ONLY file that talks to GameAnalytics (npm "gameanalytics"): initAnalytics() + trackDayStart / trackDayComplete /
+│   │                           trackTruckStart / trackTruckComplete / trackTutorialStep / trackHintUsed / trackReset / trackPurchase /
+│   │                           trackApartmentOpened / trackShopOpened / trackMenuChoice. Every call is try/catch + a no-op if analytics is off.
+│   ├── analyticsConfig.js      Game Key, Secret Key and the build string (do NOT commit to a public repo).
 │   ├── save.js                 The ONLY file that touches localStorage: loadSave() / writeSave(state) /
 │   │                           clearSave(), key "parcel_save_v1", every call in try/catch (never throws). It
 │   │                           knows nothing about the save's contents, so another backend (a platform SDK)
@@ -58,6 +68,8 @@ parcel-puzzle/
 │   │   ├── pickReaction.js     Random worker pose on a solved truck, never the same twice in a row.
 │   │   ├── ftueTrail.js        The first-day trail (paycheck -> shop -> apartment, switched off by a skipped tutorial): FTUE_ITEM_ID ('clock') and
 │   │   │                       ftueTrailStage() = 'shop' | 'decorate' | 'free', worked out from what the player owns.
+│   │   ├── badges.js           When the red dots show: shopHasBuyable(day, state, config, categories?) for the Shop button / shop tabs,
+│   │   │                       apartmentHasNew(owned, seen) for the Decorate button.
 │   │   ├── saveState.js        The save FORMAT: SAVE_VERSION, defaultSaveState(), and mergeSave(raw) which
 │   │   │                       merges a stored object over the new-game defaults field by field (bad or missing
 │   │   │                       fields fall back; a newer version or a non-save gives null). Includes 'truck' + 'truckLog' (trucks
@@ -77,9 +89,13 @@ parcel-puzzle/
 │   │   │                       overlap - wall / rug / furniture), draw order, picking by
 │   │   │                       sprite bounds, save/load, footprint -> sprite pixel maths,
 │   │   │                       and findNearestValid (where an illegal drop lands instead).
-│   │   └── TrayLayout.js       Conveyor-belt maths: how big the parcels are and where each
-│   │                           goes in the single row - full size with gaps, then a slight
-│   │                           overlap when crowded, then shrinking as a last resort.
+│   │   ├── TrayLayout.js       Conveyor-belt maths: how big the parcels are and where each
+│   │   │                       goes in the single row - full size with gaps, then a slight
+│   │   │                       overlap when crowded, then shrinking as a last resort. Also
+│   │   │                       computeTrayRows / planTrayRows: the portrait (phone) tray, which wraps
+│   │   │                       the parcels onto 1-3 conveyor lanes at one shared size.
+│   │   └── orientation.js      Landscape vs portrait: windowIsPortrait and gameSizeForWindow (landscape is
+│   │                           always exactly 1280x720; portrait is 720 wide, 1000-1560 tall). Pure.
 │   │
 │   ├── data/                   Runtime level data — the NEW schema (replaces the legacy
 │   │   │                       docs/level_data.md format entirely). Shape geometry itself
@@ -127,6 +143,9 @@ parcel-puzzle/
 │   │   │                       economy state: getEconomyState / setEconomyState / resetEconomy / getMoney.
 │   │   ├── dayFlow.js          startDay: the screens between Next Day and gameplay (promotion, then bonus), one
 │   │   │                       scene each, then the day's first truck.
+│   │   ├── layout.js           ORIENTATION: isPortrait(scene), gameSizeForWindow, and watchOrientation(game) -
+│   │   │                       resizes the canvas and restarts the active scene when the window flips between
+│   │   │                       wide and tall (a scene may define getRelayoutData / relayoutBlocked).
 │   │   ├── fonts.css           The Fredoka @font-face rules (Latin 400 / 600 / 700, .woff2 only), imported by Preloader.
 │   │   ├── progress.js         Save / load glue: initSave (Boot, once), hasSave, commitTruck (a truck was packed),
 │   │   │                       commitDay (end of a workday: saves the NEXT day), saveProgress (shop purchase /
@@ -206,14 +225,15 @@ parcel-puzzle/
 │   │       ├── pulse.js        addPulse: a steady grow-and-shrink on a button, pausing on hover (leads the player to Shop, Decorate).
 │   │       ├── FtueGuide.js    First-day guide for the very first puzzle: boss panel beside the truck, Next button,
 │   │       │                   then highlights a parcel + its spot, then a 3s "not bad" message and it leaves.
-│   │       ├── skipButton.js   addSkipButton: the "Skip >>" picture button a returning player uses to skip the whole tutorial.
+│   │       ├── skipButton.js   addSkipButton: the "skip tutorial >" picture button (assets/ui/skip-tut-button.webp) a returning player uses to skip the whole tutorial.
 │   │       ├── GuideCursor.js  The pointing-hand cursor (assets/ui/hand-cursor.webp) that SHOWS the player what to do: playDrag
 │   │       │                   (press, drag, release, loop) and playTap (press, bounce, fade, loop). Only a picture - never touches
 │   │       │                   the real parcels / buttons / furniture. Used by the first-day guide, paycheck and apartment.
 │   │       ├── audioToggle.js  Square music/SFX mute toggle for the pause menu (drawn note / speaker icon).
+│   │       ├── badge.js        The red dot drawn on the corner of a button (addBadgeToImage / addBadgeToBox).
 │   │       ├── imageButton.js  addImageButton: a picture button sized by design height (assets/ui/button-*).
-│   │       ├── pressFeedback.js  Click feedback for any button: squashes when pressed,
-│   │       │                   springs back on release; optional short delay so scene-
+│   │       ├── pressFeedback.js  Click feedback for any button: squashes when pressed with a mouse,
+│   │       │                   GROWS while a finger is down on a phone, springs back on release; optional short delay so scene-
 │   │       │                   changing buttons show it before they act.
 │   │       └── PieceView.js    Draws a single piece using its art image (assets/<shape id>.png); owns
 │   │                           pointer input and drag state (not placement legality). Placed
@@ -222,7 +242,11 @@ parcel-puzzle/
 │   (Real art for the six luxury placeholder items, and a real rewarded-ad provider, remain
 │    future work - see ROADMAP.md.)
 │
-├── scripts/                    Node CLI tools. validate-levels.js/generate-levels.js consume
+├── scripts/                    Node CLI tools. convert-mobile-art.cjs turns the portrait paintings in
+│   │                           assets-original/mobile/ into assets/mobile/*.webp (trims the clipboard and the tray,
+│   │                           clears stray near-invisible pixels; needs the sharp package, which is not a
+│   │                           project dependency - see its header).
+│   │                           validate-levels.js/generate-levels.js consume
 │   │                           src/core and src/data directly (no Phaser dependency,
 │   │                           run outside the browser); screenshot.js is the one
 │   │                           exception (see below) — it drives the real browser build.

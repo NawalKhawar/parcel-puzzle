@@ -1,10 +1,13 @@
 import { Geom, Scene } from 'phaser';
 import { makePressable } from '../objects/pressFeedback.js';
 import { addImageButton } from '../objects/imageButton.js';
+import { trackMenuChoice } from '../../analytics.js';
 import { showConfirm } from '../objects/OfferPopup.js';
 import { playBgm, TITLE_BGM_VOLUME } from '../audio.js';
 import { UI_SCALE } from '../uiScale.js';
 import { hasSave, startNewGame, continueGame } from '../progress.js';
+import { isPortrait } from '../layout.js';
+import { addCoverArt } from '../objects/fullScreenArt.js';
 
 /**
  * TitleScene.js
@@ -18,6 +21,10 @@ import { hasSave, startNewGame, continueGame } from '../progress.js';
  *   - A saved game: two picture buttons, "Continue" (carries on where the save left off) and "New
  *     Game", which asks Yes / No first because it erases the save. A returning player who says Yes is
  *     offered a Skip button for the tutorial (see progress.startNewGame).
+ *
+ * On a phone (portrait canvas) the painting is the hand-made tall one, assets/mobile/title-bg-portrait.webp
+ * (941x1672), cover-scaled to the canvas; the button(s) sit on the open floor below the two characters, at a
+ * spot given as a fraction of the painting so they follow the crop on any phone shape (see PORTRAIT_BUTTON_SPOT).
  */
 
 /** Where the button sits, as a fraction of the screen (0-1 from the top-left). title-bg.png
@@ -26,6 +33,15 @@ import { hasSave, startNewGame, continueGame } from '../progress.js';
  *  art. If title-bg.png is ever replaced, re-measure and update these two numbers. */
 const BUTTON_X_FRACTION = 0.508;
 const BUTTON_Y_FRACTION = 0.71;
+
+/** Portrait: where the button(s) go, as fractions of the 941x1672 painting - the open floor between the characters'
+ *  feet (about y 0.75) and the boxes at the very bottom. If title-bg-portrait is ever replaced, re-measure. */
+const PORTRAIT_BUTTON_SPOT = { x: 0.5, y: 0.86 };
+
+/** Portrait: the least room (design px) kept between the lowest button's centre and the canvas bottom, so on a
+ *  squarer phone the stack is pushed up off the screen edge / home-indicator strip rather than cut off. */
+const PORTRAIT_CLEARANCE_START = 120;
+const PORTRAIT_CLEARANCE_MENU = 180;
 
 export class TitleScene extends Scene
 {
@@ -40,24 +56,39 @@ export class TitleScene extends Scene
         // the canvas (e.g. an unusual aspect ratio under Scale.FIT).
         this.cameras.main.setBackgroundColor(0xf5ead6);
 
-        // The title art (1672x941 - very close to the game's own 16:9) stretched to cover the
-        // whole screen; the game's own 1280x720 design is near enough the same ratio that this
-        // is effectively undistorted.
-        this.add.image(0, 0, 'title-bg').setOrigin(0, 0).setDisplaySize(this.scale.width, this.scale.height);
+        const portrait = isPortrait(this);
+        let buttonX;
+        let buttonY;
+        if (portrait)
+        {
+            // One tall painting covering the canvas; the buttons go on its floor, but never nearer the bottom
+            // edge than the clearance (a squarer phone shows less of the painting's lower part).
+            const art = addCoverArt(this, 'title-bg-portrait');
+            const spot = art.at(PORTRAIT_BUTTON_SPOT.x, PORTRAIT_BUTTON_SPOT.y);
+            const clearance = (hasSave() ? PORTRAIT_CLEARANCE_MENU : PORTRAIT_CLEARANCE_START) * UI_SCALE;
+            buttonX = spot.x;
+            buttonY = Math.min(spot.y, this.scale.height - clearance);
+        }
+        else
+        {
+            // The title art (1672x941 - very close to the game's own 16:9) stretched to cover the
+            // whole screen; the game's own 1280x720 design is near enough the same ratio that this
+            // is effectively undistorted.
+            this.add.image(0, 0, 'title-bg').setOrigin(0, 0).setDisplaySize(this.scale.width, this.scale.height);
+            buttonX = this.scale.width * BUTTON_X_FRACTION;
+            buttonY = this.scale.height * BUTTON_Y_FRACTION;
+        }
 
         // Title music (replaces the gameplay music when arriving here from Quit).
         playBgm(this, 'title-bgm', TITLE_BGM_VOLUME);
 
-        const buttonX = this.scale.width * BUTTON_X_FRACTION;
-        const buttonY = this.scale.height * BUTTON_Y_FRACTION;
-
         if (hasSave())
         {
-            this.addSaveMenu(buttonX, buttonY);
+            this.addSaveMenu(buttonX, buttonY, portrait);
         }
         else
         {
-            this.addStartButton(buttonX, buttonY);
+            this.addStartButton(buttonX, buttonY, portrait);
         }
     }
 
@@ -66,8 +97,9 @@ export class TitleScene extends Scene
      *
      * @param {number} x - centre x, screen pixels.
      * @param {number} y - centre y, screen pixels.
+     * @param {boolean} [portrait] - draw it larger, for a phone.
      */
-    addStartButton (x, y)
+    addStartButton (x, y, portrait = false)
     {
         // The button art (assets/ui/start-packing.webp, 1024x384 - half the original 2048x768 master)
         // is a pill with a soft glow around it. Shown at 390x146 design pixels the pill itself is
@@ -76,7 +108,7 @@ export class TitleScene extends Scene
         // opaque pixels; halve it again if the art is ever shrunk further).
         const playButton = this.add
             .image(x, y, 'start-packing')
-            .setDisplaySize(390 * UI_SCALE, 146 * UI_SCALE)
+            .setDisplaySize((portrait ? 480 : 390) * UI_SCALE, (portrait ? 180 : 146) * UI_SCALE)
             .setInteractive(new Geom.Rectangle(10, 66, 1003, 248), Geom.Rectangle.Contains);
         playButton.input.cursor = 'pointer';
 
@@ -89,18 +121,26 @@ export class TitleScene extends Scene
      *
      * @param {number} x - centre x of the pair, screen pixels.
      * @param {number} y - centre y of the pair, screen pixels.
+     * @param {boolean} [portrait] - larger buttons, centred in the gap, for a phone.
      */
-    addSaveMenu (x, y)
+    addSaveMenu (x, y, portrait = false)
     {
         const S = UI_SCALE;
-        const height = 108; // design px
-        const rowOffset = 62 * S; // each row sits this far above / below the centre
-        y += 12 * S; // nudged down a little so the larger buttons stay clear of the logo
+        // design px. A phone gets big, easy-to-tap buttons (136, was 104); the PC layout keeps its original 108.
+        const height = portrait ? 136 : 108;
+        const rowOffset = (portrait ? 80 : 62) * S; // each row sits this far above / below the centre
+        if (!portrait)
+        {
+            y += 12 * S; // nudged down a little so the larger buttons stay clear of the logo
+        }
 
         const continueButton = addImageButton(this, x, y - rowOffset, 'button-continue', height);
         const newGameButton = addImageButton(this, x, y + rowOffset, 'button-new-game', height);
 
-        makePressable(this, continueButton, () => continueGame(this), { delay: 140 });
+        makePressable(this, continueButton, () => {
+            trackMenuChoice('continue'); // analytics
+            continueGame(this);
+        }, { delay: 140 });
 
         // New Game erases the save, so ask first. No simply closes the question.
         makePressable(this, newGameButton, () => {
@@ -122,6 +162,7 @@ export class TitleScene extends Scene
      */
     beginNewGame (returning)
     {
+        trackMenuChoice('new'); // analytics (also the single Start Packing button: a first game is a new game)
         startNewGame(this.registry, { returning });
         this.scene.start('PuzzleScene', { levelIndex: 0, truckIndex: 0 });
     }

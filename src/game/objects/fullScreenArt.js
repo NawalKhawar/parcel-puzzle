@@ -2,6 +2,7 @@ import { UI_SCALE } from '../uiScale.js';
 import { addImageButton } from './imageButton.js';
 import { addPulse } from './pulse.js';
 import { makePressable } from './pressFeedback.js';
+import { isPortrait } from '../layout.js';
 
 /**
  * fullScreenArt.js
@@ -16,6 +17,9 @@ import { makePressable } from './pressFeedback.js';
  * Adds a picture covering the whole canvas: scaled up evenly until it fills both directions and
  * centred, so a picture that is not exactly the screen's shape is cropped a little at the edges
  * (never stretched). Returns the helpers to place things on it.
+ *
+ * The phone (portrait) paintings are 9:16 and go through this same function: on a taller phone the sides
+ * are cropped, on a squarer one the top and bottom, and `at` keeps text on the right spot either way.
  *
  * @param {import('phaser').Scene} scene
  * @param {string} key - the texture key, e.g. 'promotion'.
@@ -52,8 +56,14 @@ export function addCoverArt(scene, key)
 export function addProceedButton(scene, onProceed)
 {
     const S = UI_SCALE;
-    const button = addImageButton(scene, 0, 0, 'button-page-next', 84);
-    button.setPosition(scene.scale.width - 46 * S - button.displayWidth / 2, scene.scale.height - 46 * S - button.displayHeight / 2);
+    // On a phone the arrow is bigger (a fingertip needs ~76 design px at least) and sits higher, clear of the
+    // home-indicator strip at the very bottom.
+    const portrait = isPortrait(scene);
+    const button = addImageButton(scene, 0, 0, 'button-page-next', portrait ? 116 : 84);
+    button.setPosition(
+        scene.scale.width - (portrait ? 40 : 46) * S - button.displayWidth / 2,
+        scene.scale.height - (portrait ? 70 : 46) * S - button.displayHeight / 2
+    );
     // addPulse must come before makePressable (see pulse.js).
     const pulse = addPulse(scene, button);
     makePressable(scene, button, () => {

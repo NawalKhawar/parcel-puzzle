@@ -28,6 +28,7 @@ import {
     bonusForDay,
     overtimeOffer,
     simulateShopper,
+    hintCost,
 } from '../src/core/economy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,9 +46,13 @@ for (const rank of config.ranks) {
 
 // ---- Day pay at the key days.
 console.log('\nDay pay (trucks only):');
-for (const day of [1, 2, 6, 15, 20, 26, 31, 40]) {
+for (const day of [1, 2, 6, 7, 11, 16, 20, 25, 30, 40]) {
     console.log(`  day ${String(day).padStart(2)}: $${dayPay(day, config)}`);
 }
+
+// ---- What a paid hint costs by rank.
+console.log(`
+Paid hint (${config.hints.costUnits} units): ${config.ranks.map((rank) => `rank ${rank.rank} $${hintCost(rank.startDay, config)}`).join(', ')}`);
 
 // ---- The 50-day totals.
 let base = 0;
@@ -69,3 +74,8 @@ for (const purchase of purchases) {
 console.log(finishDay === null
     ? '  -> the catalogue is never completed'
     : `  -> the whole catalogue (${purchases.length} items) is owned on day ${finishDay}, with $${state.money} left over`);
+
+// ---- Both model players side by side (the pacing check: about day 53 without overtime, about day 50 with).
+const finish = (overtime) => simulateShopper(config, { includeDisabled, takeOvertime: overtime }).finishDay;
+console.log(`
+Full shop completed: day ${finish(false)} without overtime, day ${finish(true)} taking every overtime offer`);

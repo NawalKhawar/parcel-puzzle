@@ -17,6 +17,9 @@ import { showCornerTip } from '../objects/cornerTip.js';
 import { playSfx, playBgm, GAMEPLAY_BGM_VOLUME } from '../audio.js';
 import { addFittedIcon, getArtBounds } from '../objects/artBounds.js';
 import { UI_SCALE } from '../uiScale.js';
+import { isPortrait } from '../layout.js';
+import { apartmentHasNew } from '../../core/badges.js';
+import { trackApartmentOpened } from '../../analytics.js';
 
 /**
  * ApartmentScene.js
@@ -59,52 +62,227 @@ const ROOM_MARGIN_Y = 8;
 const TOTAL_ROWS = HEADROOM_ROWS + WALL_ROWS + ROOM_H;
 
 /**
- * The biggest WHOLE-NUMBER scale at which the room (with its headroom) still fits the screen's
- * height. At the normal 1280x720 canvas that's 2 (a 896x704 room); on a high-DPI canvas
- * (UI_SCALE 2) it's 4, the same size on screen with twice the detail.
+ * THE LAYOUT. Where the room, the buttons, the inventory panel and its slots go depends on the canvas
+ * shape, so these are assigned by configureLayout() every time the scene opens (init) rather than fixed
+ * at load time. They are module-level `let`s only so the many methods below can read them by their
+ * short names; only one ApartmentScene runs at a time, and each visit reassigns every one of them.
+ *
+ * LANDSCAPE is the original layout (room in the middle, buttons left, inventory right) and its numbers
+ * are exactly the original constants. The room is drawn at the biggest WHOLE-NUMBER scale at which it
+ * (with its headroom) still fits the screen's height: at the normal 1280x720 canvas that is 2 (a 896x704
+ * room); on a high-DPI canvas (UI_SCALE 2) it is 4, the same size on screen with twice the detail.
+ *
+ * PORTRAIT (a phone held upright) stacks everything: a bar of buttons across the top, the wallpaper
+ * swatches under it, the room across the screen, and the inventory panel below the room. The room is as
+ * wide as the screen allows (a whole or half-number scale, so every tile edge is still a whole pixel);
+ * if the phone is short, the scale steps down until the inventory has room for at least one row.
  */
-const ROOM_SCALE = Math.max(1, Math.floor(((720 - 2 * ROOM_MARGIN_Y) * S) / (TOTAL_ROWS * TILE)));
-
-const ROOM_SCREEN_W = ROOM_W * TILE * ROOM_SCALE;
-const ROOM_SCREEN_H = (WALL_ROWS + ROOM_H) * TILE * ROOM_SCALE;
-
-/** The buttons' column, left of the room (design px from the screen's left edge). */
-const BUTTONS_X = 16 * S;
-/** Right edge of that column: Undo + Redo side by side are 96px wide (the widest row). */
-const BUTTONS_RIGHT = 112 * S;
-
 /**
- * The bottom edge shared by the room and the inventory panel. The room (and so the panel) is as
- * tall as the screen allows, with the same margin above and below so it sits centred.
+ * The room's shape in tiles: columns across, wall rows and floor rows. Landscape uses the shared roomConfig numbers
+ * (14 x 3 + 8); the phone (portrait) room is NARROWER and TALLER (PORTRAIT_ROOM) so that, at the same screen
+ * width, every tile - and so every item in the room - is drawn bigger.
  */
-const BOTTOM_Y = (720 - ROOM_MARGIN_Y) * S;
-
+let ROOM_COLS;
+let WALL_N;
+let FLOOR_N;
+let ROOM_SCALE;
+let ROOM_SCREEN_W;
+let ROOM_SCREEN_H;
+/** The left edge of the buttons (landscape: the column left of the room; portrait: the top bar). */
+let BUTTONS_X;
+/** Right edge of the landscape button column: Undo + Redo side by side are 96px wide (the widest row). */
+let BUTTONS_RIGHT;
+/** The bottom edge shared by the room and the inventory panel in landscape. */
+let BOTTOM_Y;
 /**
- * The inventory: a narrow panel at the right edge, two slots across. It is exactly as tall as the
- * room and ends on the same line, so the two line up top and bottom.
+ * The inventory panel. Landscape: a narrow panel at the right edge, two slots across, exactly as tall as
+ * the room and ending on the same line. Portrait: a wide panel under the room, three slots across.
  */
-const PANEL = { x: (1280 - 16 - 232) * S, y: BOTTOM_Y - ROOM_SCREEN_H, width: 232 * S, height: ROOM_SCREEN_H };
-
+let PANEL;
 /**
- * Top-left of the wall strip on screen. The room is the main thing on this screen: it is centred
- * in the space between the button column and the inventory, and ROOM_W (roomConfig.js) is chosen
- * to fill that space. Its bottom edge is BOTTOM_Y. Rounded so every tile edge lands on a whole pixel.
+ * Top-left of the wall strip on screen. Landscape: centred in the space between the button column and
+ * the inventory (ROOM_W in roomConfig.js is chosen to fill that space). Rounded so every tile edge lands
+ * on a whole pixel.
  */
-const ROOM_X = Math.round((BUTTONS_RIGHT + PANEL.x) / 2 - ROOM_SCREEN_W / 2);
-const ROOM_Y = BOTTOM_Y - ROOM_SCREEN_H;
-const SLOT = { size: 104 * S, gap: 8 * S, firstY: PANEL.y + 48 * S, columns: 2 };
+let ROOM_X;
+let ROOM_Y;
+/** Slot size / gap / columns / first row's y, and the text sizes inside a slot. */
+let SLOT;
 /** Left edge of the first slot, so the row of slots is centred in the panel. */
-const SLOT_X = PANEL.x + (PANEL.width - (SLOT.columns * SLOT.size + (SLOT.columns - 1) * SLOT.gap)) / 2;
+let SLOT_X;
 /** Height kept free at the bottom of the panel for the scroll arrows. */
-const SCROLL_STRIP_HEIGHT = 44 * S;
-
-/** Height of the Clear picture button (design px). */
-const CLEAR_BUTTON_HEIGHT = 48;
-
-/** Height of the Back picture button (design px). */
-const BACK_BUTTON_HEIGHT = 60;
+let SCROLL_STRIP_HEIGHT;
+/** Heights of the Clear and Back picture buttons (design px). */
+let CLEAR_BUTTON_HEIGHT;
+let BACK_BUTTON_HEIGHT;
 /** How many whole rows of slots fit; the inventory scrolls a row at a time (no clipping needed). */
-const VISIBLE_SLOT_ROWS = Math.floor((PANEL.y + PANEL.height - SCROLL_STRIP_HEIGHT - SLOT.firstY + SLOT.gap) / (SLOT.size + SLOT.gap));
+let VISIBLE_SLOT_ROWS;
+/** Wallpaper swatch size, gap and columns (design px), and where the first swatch is. */
+let SWATCH;
+/** Everything else that differs between the two layouts (see configureLayout). */
+let UI;
+
+/**
+ * The original landscape layout, number for number.
+ */
+function configureLandscapeLayout ()
+{
+    ROOM_COLS = ROOM_W;
+    WALL_N = WALL_ROWS;
+    FLOOR_N = ROOM_H;
+    ROOM_SCALE = Math.max(1, Math.floor(((720 - 2 * ROOM_MARGIN_Y) * S) / (TOTAL_ROWS * TILE)));
+    ROOM_SCREEN_W = ROOM_W * TILE * ROOM_SCALE;
+    ROOM_SCREEN_H = (WALL_ROWS + ROOM_H) * TILE * ROOM_SCALE;
+    BUTTONS_X = 16 * S;
+    BUTTONS_RIGHT = 112 * S;
+    BOTTOM_Y = (720 - ROOM_MARGIN_Y) * S;
+    PANEL = { x: (1280 - 16 - 232) * S, y: BOTTOM_Y - ROOM_SCREEN_H, width: 232 * S, height: ROOM_SCREEN_H };
+    ROOM_X = Math.round((BUTTONS_RIGHT + PANEL.x) / 2 - ROOM_SCREEN_W / 2);
+    ROOM_Y = BOTTOM_Y - ROOM_SCREEN_H;
+    SLOT = {
+        size: 104 * S, gap: 8 * S, firstY: PANEL.y + 48 * S, columns: 2,
+        // Text inside a slot: the name and footprint lines, their heights above the slot's bottom edge,
+        // and the space they take (the picture gets the rest).
+        nameSize: 13 * S, detailSize: 11 * S, nameFromBottom: 27 * S, detailFromBottom: 11 * S, textArea: 44 * S,
+    };
+    SLOT_X = PANEL.x + (PANEL.width - (SLOT.columns * SLOT.size + (SLOT.columns - 1) * SLOT.gap)) / 2;
+    SCROLL_STRIP_HEIGHT = 44 * S;
+    CLEAR_BUTTON_HEIGHT = 48;
+    BACK_BUTTON_HEIGHT = 60;
+    VISIBLE_SLOT_ROWS = Math.floor((PANEL.y + PANEL.height - SCROLL_STRIP_HEIGHT - SLOT.firstY + SLOT.gap) / (SLOT.size + SLOT.gap));
+    // Swatches are 44 px (they were 26) and two across: 2 x 44 + the gap still fits the ~108 px button column.
+    SWATCH = { size: 44, gap: 8, columns: 2, x0: BUTTONS_X, yOffset: 26 * S };
+    UI = {
+        portrait: false,
+        panelTitleSize: 18 * S, panelTitleY: 24 * S, emptySize: 15 * S, emptyY: 40 * S,
+        arrowHeight: 34, arrowSpread: 34 * S,
+        tapSlop: 6 * S,
+        iconSize: 44 * S,
+    };
+}
+
+/**
+ * The phone room: 10 columns, a tall 5-row wall and 6 floor rows (landscape: 14 columns, 3 wall rows, 8 floor
+ * rows). Ten columns fit the 720-wide canvas at a whole 2x scale (64 px tiles, a third bigger than the 48 px
+ * tiles 14 columns allowed); the taller wall gives posters and lamps more space, the floor a little less.
+ * The biggest item (the large rug, 6 x 4) still fits. The painted wall / floor (assets/mobile) cover this shape.
+ */
+const PORTRAIT_ROOM = { cols: 10, wallRows: 5, floorRows: 6 };
+
+/**
+ * The portrait (phone) layout. Sizes are bigger than landscape's because a phone shows the 720-wide
+ * canvas at about half size: tap targets are 64-76 design px and text is 22-28 px.
+ *
+ * @param {number} width - canvas width in canvas px.
+ * @param {number} height - canvas height in canvas px.
+ * @param {number} wallpaperCount - how many swatches the wallpaper picker will show.
+ */
+function configurePortraitLayout (width, height, wallpaperCount)
+{
+    const W = width / S; // design px
+    const margin = 12;
+    ROOM_COLS = PORTRAIT_ROOM.cols;
+    WALL_N = PORTRAIT_ROOM.wallRows;
+    FLOOR_N = PORTRAIT_ROOM.floorRows;
+    BUTTONS_X = 16 * S;
+    BUTTONS_RIGHT = BUTTONS_X;
+    BACK_BUTTON_HEIGHT = 76;
+    CLEAR_BUTTON_HEIGHT = 76;
+
+    // Top bar (Back, Undo, Redo, Clear, and the tutorial Skip button on the right), then the wallpaper
+    // swatches: a label on the left and a wrapping grid beside it.
+    const barY = 16;
+    const barHeight = 76;
+    // 80 px squares: a finger-sized target, five across next to the 'Wallpaper' label.
+    const swatchSize = 80;
+    const swatchGap = 12;
+    const swatchX0 = 16 + 150;
+    const perRow = Math.max(1, Math.floor((W - 16 - swatchX0 + swatchGap) / (swatchSize + swatchGap)));
+    const swatchRows = Math.max(1, Math.ceil(wallpaperCount / perRow));
+    const swatchTop = barY + barHeight + 14;
+    const swatchBlock = swatchRows * swatchSize + (swatchRows - 1) * swatchGap;
+    SWATCH = { size: swatchSize, gap: swatchGap, columns: perRow, x0: swatchX0 * S, yOffset: 0 };
+    const roomTop = (swatchTop + swatchBlock + 14) * S;
+
+    // The inventory: 3 slots across, name + size under each picture. It is kept SHORT so the room can be big: the
+    // scroll arrows sit in the header beside the title (no strip under the slots), and the panel is only as tall as
+    // the rows that fit under the room.
+    const slotGap = 12;
+    const slotSize = Math.min(184, Math.floor((W - 2 * margin - 40 - 2 * slotGap) / 3));
+    const stripHeight = 0;
+    const headerHeight = 84;
+    const panelPad = 14;
+    const panelBottom = height - 16 * S;
+    const panelGap = 12 * S;
+
+    // The biggest room scale (in canvas px per room px; whole or half numbers keep tile edges on whole
+    // pixels) that fits the width - then smaller if the inventory would not get one row of slots.
+    let scale = Math.max(1, Math.floor((2 * (width - 2 * margin * S)) / (ROOM_COLS * TILE)) / 2);
+    let rows = 0;
+    for (;;)
+    {
+        const roomHeight = (WALL_N + FLOOR_N) * TILE * scale;
+        const panelTop = roomTop + roomHeight + panelGap;
+        rows = Math.floor((panelBottom - panelTop - (stripHeight + headerHeight + panelPad) * S + slotGap * S) / ((slotSize + slotGap) * S));
+        if (rows >= 1 || scale <= 1)
+        {
+            break;
+        }
+        scale -= 0.5;
+    }
+    rows = Math.max(1, rows);
+
+    ROOM_SCALE = scale;
+    ROOM_SCREEN_W = ROOM_COLS * TILE * ROOM_SCALE;
+    ROOM_SCREEN_H = (WALL_N + FLOOR_N) * TILE * ROOM_SCALE;
+    ROOM_X = Math.round((width - ROOM_SCREEN_W) / 2);
+    ROOM_Y = Math.round(roomTop);
+    BOTTOM_Y = ROOM_Y + ROOM_SCREEN_H;
+
+    const panelTop = ROOM_Y + ROOM_SCREEN_H + panelGap;
+    // Only as tall as its rows need (the leftover below is plain background), so a taller phone gets a bigger room, not a bigger tray.
+    PANEL = { x: margin * S, y: panelTop, width: width - 2 * margin * S, height: (headerHeight + rows * slotSize + (rows - 1) * slotGap + panelPad) * S };
+    SLOT = {
+        size: slotSize * S, gap: slotGap * S, firstY: panelTop + headerHeight * S, columns: 3,
+        nameSize: 24 * S, detailSize: 24 * S, nameFromBottom: 50 * S, detailFromBottom: 20 * S, textArea: 88 * S,
+    };
+    SLOT_X = PANEL.x + (PANEL.width - (SLOT.columns * SLOT.size + (SLOT.columns - 1) * SLOT.gap)) / 2;
+    SCROLL_STRIP_HEIGHT = stripHeight * S;
+    VISIBLE_SLOT_ROWS = rows;
+    UI = {
+        portrait: true,
+        panelTitleSize: 28 * S, panelTitleY: 42 * S, emptySize: 24 * S, emptyY: 10 * S,
+        // The scroll arrows sit in the header, at its two ends (arrowSpread is how far in from the panel's edges, to their centres).
+        arrowHeight: 72, arrowSpread: 56 * S, arrowsInHeader: headerHeight * S,
+        // A finger wobbles more than a mouse, so a tap may move further before it counts as a drag.
+        tapSlop: 16 * S,
+        iconSize: 76 * S,
+        barY: barY * S,
+        wallpaperHint: true,
+        swatchTop: swatchTop * S,
+    };
+}
+
+/**
+ * Picks and applies the layout for the scene's current canvas shape.
+ *
+ * @param {import('phaser').Scene} scene
+ */
+function configureLayout (scene)
+{
+    if (isPortrait(scene))
+    {
+        // The picker shows the original wall plus one swatch per wallpaper the player owns; the room sits
+        // below it, so the number of swatch rows is needed before anything is placed.
+        const owned = new Set(getEconomyState(scene.registry).ownedItems);
+        const swatchCount = 1 + loadWallpapers(wallpapersRaw).filter((wallpaper) => owned.has(wallpaper.id)).length;
+        configurePortraitLayout(scene.scale.width, scene.scale.height, swatchCount);
+    }
+    else
+    {
+        configureLandscapeLayout();
+    }
+}
 
 /** Colours of the ghost drawn on the footprint while dragging. */
 const GHOST_VALID_COLOR = 0x6fd08c;
@@ -124,20 +302,37 @@ const GHOST_DEPTH = 1000;
 /** The first-day hand cursor: above the item being carried and its ghost. */
 const GUIDE_CURSOR_DEPTH = 1100;
 
-/** How far (screen px) a press on a placed item must move before it counts as a drag, not a tap. */
-const TAP_SLOP = 6 * S;
+/** How far (screen px) a press on a placed item must move before it counts as a drag, not a tap: UI.tapSlop. */
 
-/** Registry key under which the layout is remembered: { [itemId]: { x, y } }. */
-const LAYOUT_KEY = 'apartmentLayout';
+/**
+ * How far above a finger a dragged item is held, so the finger does not hide it (design px). Only
+ * touch pointers get this; a mouse holds the item exactly under the cursor as before.
+ */
+const TOUCH_LIFT = 70 * S;
+
+/**
+ * Registry key under which the layout is remembered: { [itemId]: { x, y } }. The phone room has a different tile
+ * grid from the landscape room, so each keeps its own arrangement.
+ *
+ * @returns {string}
+ */
+function layoutKey ()
+{
+    return UI.portrait ? 'apartmentLayoutPortrait' : 'apartmentLayout';
+}
 
 /** Registry key of the chosen wallpaper's id (absent/null = the original wall). Not part of undo/redo. */
 const WALLPAPER_KEY = 'apartmentWallpaper';
 
+/** How much a wallpaper swatch grows while the mouse is over it (the shared button hover is only 1.08: too subtle for a small swatch). */
+const SWATCH_HOVER_SCALE = 1.2;
+
+/** How much an inventory slot grows while the mouse is over it (like a parcel in the puzzle's tray), and how long the grow takes (ms). */
+const SLOT_HOVER_SCALE = 1.12;
+const SLOT_HOVER_MS = 110;
+
 /** The colour of the original wall (the swatch for "no wallpaper" is drawn in it, so every swatch is the colour the wall will show). */
 const ORIGINAL_WALL_COLOR = '#f8e7ce';
-
-/** Wallpaper swatch size, gap and columns in the left-hand column (design px). */
-const SWATCH = { size: 26, gap: 6, columns: 3 };
 
 /**
  * Whether two saved layouts put every item in the same place. Compared by item id rather than
@@ -191,6 +386,8 @@ export class ApartmentScene extends Scene
      */
     init (data)
     {
+        // The layout depends on the canvas shape, which can change between visits (a rotated phone).
+        configureLayout(this);
         this.dayCompleteData = data;
         /** The drag in progress, or null. See startDrag(). */
         this.drag = null;
@@ -213,6 +410,7 @@ export class ApartmentScene extends Scene
     create ()
     {
         this.cameras.main.setBackgroundColor(0xf5ead6);
+        trackApartmentOpened(); // analytics
         // The same music as gameplay (a no-op if it is already playing).
         playBgm(this, 'gameplay-bgm', GAMEPLAY_BGM_VOLUME);
         // The paused PuzzleScene may still be rendered underneath, so cover the canvas.
@@ -220,7 +418,16 @@ export class ApartmentScene extends Scene
 
         /** @type {Map<string, import('../../data/loadItems.js').ItemDef>} */
         this.defs = new Map(loadItems(itemsRaw).map((item) => [item.id, item]));
-        this.room = new RoomLayout();
+        this.room = new RoomLayout({ width: ROOM_COLS, floorRows: FLOOR_N, wallRows: WALL_N, hangRows: WALL_N - 1 });
+
+        // Everything owned counts as SEEN from now on: the red dot on the Decorate button (core/badges.js) only
+        // means "something you have not looked at yet".
+        const wallet = getEconomyState(this.registry);
+        if (apartmentHasNew(wallet.ownedItems, this.registry.get('seenItems') ?? []))
+        {
+            this.registry.set('seenItems', [...wallet.ownedItems]);
+            saveProgress(this.registry);
+        }
 
         this.drawRoom();
 
@@ -240,9 +447,9 @@ export class ApartmentScene extends Scene
         this.panelGraphics = this.add.graphics();
         this.drawPanel(false);
         this.add
-            .text(PANEL.x + PANEL.width / 2, PANEL.y + 24 * S, 'Inventory', {
+            .text(PANEL.x + PANEL.width / 2, PANEL.y + UI.panelTitleY, 'Inventory', {
                 fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                fontSize: 18 * S,
+                fontSize: UI.panelTitleSize,
                 color: '#3a362f',
             })
             .setOrigin(0.5);
@@ -250,6 +457,8 @@ export class ApartmentScene extends Scene
         this.inventoryObjects = [];
         /** Click targets for the inventory slots, rebuilt with the objects above. */
         this.slotRects = [];
+        /** The id of the inventory slot the mouse is over (null if none); see updateSlotHover(). */
+        this.hoveredSlotId = null;
         /** The first visible row of slots; see scrollInventory(). */
         this.inventoryScroll = 0;
         this.createScrollArrows();
@@ -272,7 +481,7 @@ export class ApartmentScene extends Scene
 
         this.ghostGraphics = this.add.graphics().setDepth(GHOST_DEPTH);
 
-        this.room.load(this.registry.get(LAYOUT_KEY), this.defs);
+        this.room.load(this.registry.get(layoutKey()), this.defs);
         this.syncSprites();
         // The top bar was built before the saved room was loaded, so bring Clear's dimming up to date.
         this.refreshHistoryButtons();
@@ -332,10 +541,13 @@ export class ApartmentScene extends Scene
         if (isTutorialSkippable(this.registry))
         {
             this.skipButton = addSkipButton(this, {
-                // Bottom-right of the room (the left column is too narrow for it, and the worker's tip is bottom-left).
-                x: ROOM_X + ROOM_SCREEN_W - 100 * S,
-                y: ROOM_Y + ROOM_SCREEN_H - 48 * S,
+                // Landscape: bottom-right of the room (the left column is too narrow for it, and the worker's
+                // tip is bottom-left). Portrait: the right end of the top bar, beside Back / Undo / Redo / Clear.
+                x: UI.portrait ? this.scale.width - 16 * S - 95 * S : ROOM_X + ROOM_SCREEN_W - 100 * S,
+                y: UI.portrait ? UI.barY + 38 * S : ROOM_Y + ROOM_SCREEN_H - 48 * S,
                 depth: GUIDE_CURSOR_DEPTH,
+                // Portrait: finger-sized (landscape keeps the button's default height).
+                height: UI.portrait ? 72 : undefined,
                 onSkip: () => {
                     skipTutorial(this.registry);
                     this.endGuideCursor();
@@ -363,12 +575,12 @@ export class ApartmentScene extends Scene
     {
         const { w, h } = def.footprint;
         // Columns ordered by how close they are to the middle of the room.
-        const middle = (ROOM_W - w) / 2;
-        const columns = Array.from({ length: ROOM_W - w + 1 }, (_, x) => x).sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle));
+        const middle = (ROOM_COLS - w) / 2;
+        const columns = Array.from({ length: ROOM_COLS - w + 1 }, (_, x) => x).sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle));
         for (const x of columns)
         {
             const rows = [];
-            for (let y = 0; y <= WALL_ROWS - h; y++)
+            for (let y = 0; y <= WALL_N - h; y++)
             {
                 if (this.room.canPlace(def, x, y))
                 {
@@ -412,8 +624,11 @@ export class ApartmentScene extends Scene
      */
     drawRoom ()
     {
-        const wallHeight = WALL_ROWS * TILE * ROOM_SCALE;
-        this.wallImage = this.addRoomImage('apartment-wall', ROOM_Y, wallHeight, WALL_DEPTH);
+        const wallHeight = WALL_N * TILE * ROOM_SCALE;
+        // Phone: the hand-made wall / floor paintings (see addPaintedRoomImage); landscape: the pixel-art strips.
+        this.wallImage = UI.portrait
+            ? this.addPaintedRoomImage('wall-portrait', ROOM_Y, wallHeight, WALL_DEPTH, 'bottom')
+            : this.addRoomImage('apartment-wall', ROOM_Y, wallHeight, WALL_DEPTH);
         // A chosen wallpaper replaces the wall art entirely (rather than tinting it, which would muddy
         // the colour): a plain rectangle over the same area, shown only while a wallpaper is chosen.
         this.wallColour = this.add
@@ -422,7 +637,14 @@ export class ApartmentScene extends Scene
             .setDepth(WALL_DEPTH)
             .setVisible(false);
         this.applyWallpaper(this.registry.get(WALLPAPER_KEY) ?? null);
-        this.addRoomImage('apartment-floor', ROOM_Y + wallHeight, ROOM_H * TILE * ROOM_SCALE, FLOOR_DEPTH);
+        if (UI.portrait)
+        {
+            this.addPaintedRoomImage('floor-portrait', ROOM_Y + wallHeight, FLOOR_N * TILE * ROOM_SCALE, FLOOR_DEPTH, 'top');
+        }
+        else
+        {
+            this.addRoomImage('apartment-floor', ROOM_Y + wallHeight, ROOM_H * TILE * ROOM_SCALE, FLOOR_DEPTH);
+        }
 
         this.add
             .graphics()
@@ -450,6 +672,31 @@ export class ApartmentScene extends Scene
             this.textures.get(key).setFilter(Textures.FilterMode.NEAREST);
         }
         return this.add.image(ROOM_X, y, key).setOrigin(0, 0).setDisplaySize(ROOM_SCREEN_W, height).setDepth(depth);
+    }
+
+    /**
+     * Places one of the phone's tall painted textures (assets/mobile/wall-portrait, floor-portrait) over an area of
+     * the room: scaled to the room's width and CROPPED to the area's height, never stretched. The wall shows the
+     * bottom of its painting (the darker, warmer band lands against the floor) and the floor the top of its planks.
+     * Smooth scaling (the painting is not pixel art).
+     *
+     * @param {string} key - the texture key.
+     * @param {number} y - screen y of the area's top edge.
+     * @param {number} height - screen height of the area.
+     * @param {number} depth
+     * @param {'top' | 'bottom'} keep - which end of the painting to show.
+     * @returns {import('phaser').GameObjects.Image}
+     */
+    addPaintedRoomImage (key, y, height, depth, keep)
+    {
+        const image = this.add.image(ROOM_X, y, key).setOrigin(0, 0).setDepth(depth);
+        const scale = ROOM_SCREEN_W / image.width;
+        // How much of the painting (in its own pixels) the area needs; a crop leaves the picture where it was,
+        // so for the bottom part the whole image is moved up by the part that is cut off above it.
+        const shownHeight = Math.min(image.height, height / scale);
+        const cutAbove = keep === 'bottom' ? image.height - shownHeight : 0;
+        image.setScale(scale).setCrop(0, cutAbove, image.width, shownHeight).setPosition(ROOM_X, y - cutAbove * scale);
+        return image;
     }
 
     /**
@@ -628,9 +875,10 @@ export class ApartmentScene extends Scene
     createTopBar ()
     {
         // Back is the shop's previous-page arrow picture; the column below is spaced from its height.
-        const size = 44 * S;
+        // (Portrait: the same buttons in one row across the top, bigger, with the room underneath.)
+        const size = UI.iconSize;
         const backButton = addImageButton(this, 0, 0, 'button-page-prev', BACK_BUTTON_HEIGHT);
-        backButton.setOrigin(0, 0).setPosition(BUTTONS_X, ROOM_Y);
+        backButton.setOrigin(0, 0).setPosition(BUTTONS_X, UI.portrait ? UI.barY : ROOM_Y);
         // Back returns to the end-of-day popup it came from, rebuilt from the same data - or, when the
         // room was opened from the pause menu, to the truck that was being played.
         makePressable(this, backButton, () => {
@@ -647,7 +895,7 @@ export class ApartmentScene extends Scene
 
         // Undo and Redo reuse the HUD's reset icon (an anticlockwise arrow); Redo is it mirrored.
         // Each row of the column sits 16px below the one above.
-        const iconsY = backButton.y + backButton.displayHeight + 16 * S;
+        const iconsY = UI.portrait ? UI.barY : backButton.y + backButton.displayHeight + 16 * S;
         const makeIcon = (x, flipX, onClick) => {
             const button = this.add
                 .image(x + size / 2, iconsY + size / 2, 'reset-icon')
@@ -657,15 +905,23 @@ export class ApartmentScene extends Scene
             makePressable(this, button, onClick);
             return button;
         };
-        this.undoButton = makeIcon(BUTTONS_X, false, () => this.undo());
-        this.redoButton = makeIcon(BUTTONS_X + size + 8 * S, true, () => this.redo());
+        const undoX = UI.portrait ? backButton.x + backButton.displayWidth + 14 * S : BUTTONS_X;
+        this.undoButton = makeIcon(undoX, false, () => this.undo());
+        this.redoButton = makeIcon(undoX + size + (UI.portrait ? 10 : 8) * S, true, () => this.redo());
 
-        // Clear is a picture button (label painted in), sized to the column's width.
+        // Clear is a picture button (label painted in), sized to the column's width (portrait: the row's height).
         this.clearButton = addImageButton(this, 0, 0, 'button-clear', CLEAR_BUTTON_HEIGHT);
-        this.clearButton.setOrigin(0, 0).setPosition(BUTTONS_X, iconsY + size + 16 * S);
+        if (UI.portrait)
+        {
+            this.clearButton.setOrigin(0, 0).setPosition(undoX + 2 * size + 10 * S + 14 * S, iconsY);
+        }
+        else
+        {
+            this.clearButton.setOrigin(0, 0).setPosition(BUTTONS_X, iconsY + size + 16 * S);
+        }
         makePressable(this, this.clearButton, () => this.clearRoom());
 
-        this.createWallpaperSwatches(iconsY + size + 16 * S + this.clearButton.displayHeight + 24 * S);
+        this.createWallpaperSwatches(UI.portrait ? UI.swatchTop : iconsY + size + 16 * S + this.clearButton.displayHeight + 24 * S);
         this.refreshHistoryButtons();
     }
 
@@ -677,17 +933,25 @@ export class ApartmentScene extends Scene
      */
     createWallpaperSwatches (top)
     {
+        // (Portrait: the label sits to the left of the swatch grid, level with its first row.)
         this.add
-            .text(BUTTONS_X, top, 'Wallpaper', { fontFamily: 'Fredoka, Arial', fontStyle: '700', fontSize: 16 * S, color: '#3a362f' })
-            .setOrigin(0, 0);
+            .text(BUTTONS_X, UI.portrait ? top + (SWATCH.size * S) / 2 - 14 * S : top, 'Wallpaper', { fontFamily: 'Fredoka, Arial', fontStyle: '700', fontSize: (UI.portrait ? 26 : 16) * S, color: '#3a362f' })
+            .setOrigin(0, UI.portrait ? 0.5 : 0);
+        if (UI.wallpaperHint)
+        {
+            // Under the label: says the squares beside it are buttons (players did not know to tap them).
+            this.add
+                .text(BUTTONS_X, top + (SWATCH.size * S) / 2 + 16 * S, 'Tap to select', { fontFamily: 'Fredoka, Arial', fontStyle: '400', fontSize: 21 * S, color: '#7a6f5a' })
+                .setOrigin(0, 0.5);
+        }
         // The original wall is always there; a bought wallpaper adds its swatch.
         const owned = new Set(getEconomyState(this.registry).ownedItems);
         const options = [{ id: null, color: ORIGINAL_WALL_COLOR }, ...loadWallpapers(wallpapersRaw).filter((wallpaper) => owned.has(wallpaper.id))];
         const size = SWATCH.size * S;
         const gap = SWATCH.gap * S;
         this.swatches = options.map((option, i) => {
-            const x = BUTTONS_X + (i % SWATCH.columns) * (size + gap);
-            const y = top + 26 * S + Math.floor(i / SWATCH.columns) * (size + gap);
+            const x = SWATCH.x0 + (i % SWATCH.columns) * (size + gap);
+            const y = top + SWATCH.yOffset + Math.floor(i / SWATCH.columns) * (size + gap);
             // Rounded squares come from two small generated textures: plain, and outlined for the chosen one.
             const swatch = this.add
                 .image(x + size / 2, y + size / 2, this.swatchTexture(option.color, false))
@@ -697,7 +961,7 @@ export class ApartmentScene extends Scene
                 saveProgress(this.registry);
                 this.applyWallpaper(option.id);
                 playSfx(this, 'pop-high');
-            });
+            }, { hoverScale: SWATCH_HOVER_SCALE });
             return { option, swatch };
         });
         this.applyWallpaper(this.registry.get(WALLPAPER_KEY) ?? null);
@@ -713,16 +977,18 @@ export class ApartmentScene extends Scene
      */
     swatchTexture (color, chosen)
     {
-        const key = `swatch-${color}-${chosen ? 'on' : 'off'}`;
+        // The size is part of the key: the landscape and portrait layouts draw swatches at different sizes,
+        // and a game can switch between them (a rotated phone) without reloading.
+        const key = `swatch-${color}-${chosen ? 'on' : 'off'}-${Math.round(SWATCH.size * S)}`;
         if (!this.textures.exists(key))
         {
             const size = Math.round(SWATCH.size * S);
             const line = Math.max(1, Math.round((chosen ? 3 : 1) * S));
             const g = this.make.graphics({ x: 0, y: 0 }, false);
             g.fillStyle(parseInt(color.slice(1), 16), 1);
-            g.fillRoundedRect(0, 0, size, size, 7 * S);
+            g.fillRoundedRect(0, 0, size, size, size * 0.27);
             g.lineStyle(line, 0x3a362f, chosen ? 1 : 0.5);
-            g.strokeRoundedRect(line / 2, line / 2, size - line, size - line, 7 * S);
+            g.strokeRoundedRect(line / 2, line / 2, size - line, size - line, size * 0.27);
             g.generateTexture(key, size, size);
             g.destroy();
         }
@@ -826,7 +1092,7 @@ export class ApartmentScene extends Scene
     afterChange ()
     {
         this.syncSprites();
-        this.registry.set(LAYOUT_KEY, this.room.serialize());
+        this.registry.set(layoutKey(), this.room.serialize());
         saveProgress(this.registry);
         this.refreshInventory();
         this.refreshHistoryButtons();
@@ -863,14 +1129,18 @@ export class ApartmentScene extends Scene
     /** Creates the up/down scroll arrows at the bottom of the panel (shown only when needed). */
     createScrollArrows ()
     {
-        const y = PANEL.y + PANEL.height - SCROLL_STRIP_HEIGHT / 2;
+        // Landscape: a strip at the bottom of the panel, the arrows either side of its middle. Phone: in the header
+        // row, one at each end, either side of the "Inventory" title (so the panel needs no strip under the slots).
+        const y = UI.arrowsInHeader ? PANEL.y + UI.arrowsInHeader / 2 : PANEL.y + PANEL.height - SCROLL_STRIP_HEIGHT / 2;
+        const upX = UI.arrowsInHeader ? PANEL.x + UI.arrowSpread : PANEL.x + PANEL.width / 2 - UI.arrowSpread;
+        const downX = UI.arrowsInHeader ? PANEL.x + PANEL.width - UI.arrowSpread : PANEL.x + PANEL.width / 2 + UI.arrowSpread;
         const makeArrow = (x, key, delta) => {
-            const arrow = addImageButton(this, x, y, key, 34);
+            const arrow = addImageButton(this, x, y, key, UI.arrowHeight);
             makePressable(this, arrow, () => this.scrollInventory(delta));
             return arrow;
         };
-        this.scrollUpArrow = makeArrow(PANEL.x + PANEL.width / 2 - 34 * S, 'button-scroll-up', -1);
-        this.scrollDownArrow = makeArrow(PANEL.x + PANEL.width / 2 + 34 * S, 'button-scroll-down', 1);
+        this.scrollUpArrow = makeArrow(upX, 'button-scroll-up', -1);
+        this.scrollDownArrow = makeArrow(downX, 'button-scroll-down', 1);
     }
 
     /**
@@ -925,20 +1195,35 @@ export class ApartmentScene extends Scene
 
             // The picture (its visible part), fitted into the slot's upper area above the two text
             // lines, keeping its proportions.
-            const pictureHeight = SLOT.size - 44 * S;
+            const pictureHeight = SLOT.size - SLOT.textArea;
             const { image: roomImage, hasArt } = this.sprites.get(def.id);
             const picture = addFittedIcon(this, roomImage.texture.key, x + SLOT.size / 2, y + 6 * S + pictureHeight / 2, SLOT.size - 20 * S, pictureHeight, hasArt);
 
             const name = this.add
-                .text(x + SLOT.size / 2, y + SLOT.size - 27 * S, def.name, { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 13 * S, color: '#3a362f' })
+                .text(x + SLOT.size / 2, y + SLOT.size - SLOT.nameFromBottom, def.name, { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: SLOT.nameSize, color: '#3a362f' })
                 .setOrigin(0.5);
             // The footprint ("3x2" tiles) under the name; the price no longer matters once it is owned.
             const detail = this.add
-                .text(x + SLOT.size / 2, y + SLOT.size - 11 * S, `${def.footprint.w}x${def.footprint.h}`, { fontFamily: 'Fredoka, Arial', fontStyle: '400', fontSize: 11 * S, color: '#6b6354' })
+                .text(x + SLOT.size / 2, y + SLOT.size - SLOT.detailFromBottom, `${def.footprint.w}x${def.footprint.h}`, { fontFamily: 'Fredoka, Arial', fontStyle: '400', fontSize: SLOT.detailSize, color: '#6b6354' })
                 .setOrigin(0.5);
 
-            this.inventoryObjects.push(g, picture, name, detail);
-            this.slotRects.push({ id: def.id, x, y, width: SLOT.size, height: SLOT.size });
+            // The slot's parts live in one container centred on the slot, so the whole slot can grow round its
+            // middle on hover. The parts were drawn at screen positions, so move them to be relative to the centre.
+            const centerX = x + SLOT.size / 2;
+            const centerY = y + SLOT.size / 2;
+            for (const part of [g, picture, name, detail])
+            {
+                part.x -= centerX;
+                part.y -= centerY;
+            }
+            const container = this.add.container(centerX, centerY, [g, picture, name, detail]);
+            // The slots are rebuilt whenever anything changes: keep the one under the mouse grown, so it does not flicker.
+            if (def.id === this.hoveredSlotId)
+            {
+                container.setScale(SLOT_HOVER_SCALE).setDepth(1);
+            }
+            this.inventoryObjects.push(container);
+            this.slotRects.push({ id: def.id, x, y, width: SLOT.size, height: SLOT.size, container });
         });
 
         if (available.length === 0)
@@ -948,9 +1233,9 @@ export class ApartmentScene extends Scene
                 : 'Everything is placed.\nTap an item or drag it here\nto put it away.';
             this.inventoryObjects.push(
                 this.add
-                    .text(PANEL.x + PANEL.width / 2, SLOT.firstY + 40 * S, message, {
+                    .text(PANEL.x + PANEL.width / 2, SLOT.firstY + UI.emptyY, message, {
                         fontFamily: 'Fredoka, Arial', fontStyle: '400',
-                        fontSize: 15 * S,
+                        fontSize: UI.emptySize,
                         color: '#6b6354',
                         align: 'center',
                     })
@@ -993,6 +1278,46 @@ export class ApartmentScene extends Scene
     }
 
     /**
+     * Grows the inventory slot the mouse is over (and eases the one it left back to normal size).
+     *
+     * @param {import('phaser').Input.Pointer} pointer
+     */
+    updateSlotHover (pointer)
+    {
+        const slot = this.slotRects.find(
+            (rect) => pointer.x >= rect.x && pointer.x <= rect.x + rect.width && pointer.y >= rect.y && pointer.y <= rect.y + rect.height
+        );
+        const id = slot ? slot.id : null;
+        if (id === this.hoveredSlotId)
+        {
+            return;
+        }
+        const previous = this.slotRects.find((rect) => rect.id === this.hoveredSlotId);
+        if (previous)
+        {
+            this.tweenSlot(previous, 1);
+        }
+        this.hoveredSlotId = id;
+        if (slot)
+        {
+            this.tweenSlot(slot, SLOT_HOVER_SCALE);
+        }
+    }
+
+    /**
+     * Eases one inventory slot's container to a size. The grown slot is drawn above its neighbours.
+     *
+     * @param {{container: import('phaser').GameObjects.Container}} slot - an entry of slotRects.
+     * @param {number} scale
+     */
+    tweenSlot (slot, scale)
+    {
+        this.tweens.killTweensOf(slot.container);
+        slot.container.setDepth(scale > 1 ? 1 : 0);
+        this.tweens.add({ targets: slot.container, scale, duration: SLOT_HOVER_MS, ease: 'Sine.easeOut' });
+    }
+
+    /**
      * Begins dragging an item. One picked up from the room is removed from the layout straight
      * away (so it doesn't block its own new spot) but remembered in `origin`, so an invalid drop
      * can put it back.
@@ -1008,6 +1333,7 @@ export class ApartmentScene extends Scene
         // against it to decide whether anything really changed (and so needs an undo step).
         const before = this.room.serialize();
         const origin = this.room.remove(id) ?? null;
+        this.hoveredSlotId = null; // the slot is about to be rebuilt without this item
         playSfx(this, 'pop'); // picked up - the same sound as lifting a parcel in the puzzle
         this.drag = { id, def: this.defs.get(id), origin, grab, before, target: { type: 'none' } };
         this.setSpriteDepth(id, HELD_DEPTH);
@@ -1029,7 +1355,12 @@ export class ApartmentScene extends Scene
      */
     onPointerMove (pointer)
     {
-        if (this.pending && Math.hypot(pointer.x - this.pending.x, pointer.y - this.pending.y) > TAP_SLOP)
+        // Hover only exists for a mouse (a finger is either on the screen or not), and not while carrying something.
+        if (!pointer.wasTouch && !this.drag && !this.pending)
+        {
+            this.updateSlotHover(pointer);
+        }
+        if (this.pending && Math.hypot(pointer.x - this.pending.x, pointer.y - this.pending.y) > (pointer.wasTouch ? UI.tapSlop : 6 * S))
         {
             const { id, x, y } = this.pending;
             this.pending = null;
@@ -1057,7 +1388,9 @@ export class ApartmentScene extends Scene
     updateDrag (pointer)
     {
         const { id, def, grab } = this.drag;
-        const { px, py } = toRoom(pointer.x, pointer.y);
+        // A finger covers the item it is holding, so a touch holds the item TOUCH_LIFT above the finger
+        // (the ghost and the drop spot follow the item, not the fingertip). A mouse is unchanged.
+        const { px, py } = toRoom(pointer.x, pointer.y - (pointer.wasTouch ? TOUCH_LIFT : 0));
         const cornerX = px - grab.px;
         const cornerY = py - grab.py;
         const { x, y } = snapToTile(cornerX, cornerY);
@@ -1069,7 +1402,7 @@ export class ApartmentScene extends Scene
 
         // A footprint wholly outside the room isn't a placement attempt (the mouse is somewhere
         // else on screen), so it gets no ghost; partly outside gets a red one.
-        const touchesRoom = x + w > 0 && x < ROOM_W && y + h > 0 && y < WALL_ROWS + ROOM_H;
+        const touchesRoom = x + w > 0 && x < ROOM_COLS && y + h > 0 && y < WALL_N + FLOOR_N;
 
         if (overPanel || !touchesRoom)
         {
@@ -1142,8 +1475,8 @@ export class ApartmentScene extends Scene
     {
         const left = Math.max(0, x);
         const top = Math.max(0, y);
-        const right = Math.min(ROOM_W, x + w);
-        const bottom = Math.min(WALL_ROWS + ROOM_H, y + h);
+        const right = Math.min(ROOM_COLS, x + w);
+        const bottom = Math.min(WALL_N + FLOOR_N, y + h);
         const corner = toScreen(left * TILE, top * TILE);
         const size = TILE * ROOM_SCALE;
         this.ghostGraphics.fillStyle(color, fillAlpha);

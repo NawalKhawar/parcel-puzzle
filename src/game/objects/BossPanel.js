@@ -2,6 +2,7 @@ import { UI_SCALE } from '../uiScale.js';
 import { playSfx } from '../audio.js';
 import { addUiPanel } from './uiPanel.js';
 import { makePressable } from './pressFeedback.js';
+import { isPortrait } from '../layout.js';
 
 /**
  * BossPanel.js
@@ -76,7 +77,9 @@ export class BossPanel
         const FRAME = 37 * S; // the wood frame's thickness
         const PAD = 16 * S;
         const GAP = 10 * S;
-        const BUTTON = { width: 130 * S, height: 44 * S };
+        // Bigger on a phone, where a 44-px button is only ~24 css px tall (see layout.js).
+        const portrait = isPortrait(scene);
+        const BUTTON = portrait ? { width: 200 * S, height: 76 * S } : { width: 130 * S, height: 44 * S };
         const horizontal = this.layout === 'horizontal';
         const headSize = (horizontal ? HEAD_HORIZONTAL : HEAD_VERTICAL) * S;
         const paperWidth = this.width - 2 * (FRAME + PAD);
@@ -137,7 +140,7 @@ export class BossPanel
             background.lineStyle(2 * S, 0x8a6a4d, 1);
             background.strokeRoundedRect(-BUTTON.width / 2, -BUTTON.height / 2, BUTTON.width, BUTTON.height, 14 * S);
             const label = scene.add
-                .text(0, 0, button, { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 22 * S, color: '#3a362f' })
+                .text(0, 0, button, { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: (portrait ? 34 : 22) * S, color: '#3a362f' })
                 .setOrigin(0.5);
             this.button = scene.add.container(0, y + BUTTON.height / 2, [background, label]);
             this.button.setSize(BUTTON.width, BUTTON.height).setInteractive({ useHandCursor: true });

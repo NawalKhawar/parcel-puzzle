@@ -1,3 +1,4 @@
+import { isPortrait } from '../layout.js';
 import { UI_SCALE } from '../uiScale.js';
 import { playSfx } from '../audio.js';
 import { addUiPanel } from './uiPanel.js';
@@ -109,10 +110,14 @@ function buildFrame(scene, { width, height, title, subtitle, subtitleColor = '#c
 export function showOvertimeOffer(scene, { onAccept, onDecline })
 {
     const S = UI_SCALE;
-    const frame = buildFrame(scene, { width: 680, height: 330, title: 'One more truck?', subtitle: 'Time and a half: it pays 1.5x the usual rate.' });
-    const buttonY = frame.height / 2 - 37 * S - 16 * S - 28 * S;
-    const yes = addPillButton(scene, -135 * S, buttonY, { width: 240, height: 56, label: "Sure, I'll do it", fontSize: 22 });
-    const no = addPillButton(scene, 135 * S, buttonY, { width: 240, height: 56, label: 'No thanks', fontSize: 22, style: 'secondary' });
+    // On a phone the buttons are taller and their words bigger (a finger needs ~80 design px; see layout.js).
+    const portrait = isPortrait(scene);
+    const buttonHeight = portrait ? 84 : 56;
+    const buttonFont = portrait ? 28 : 22;
+    const frame = buildFrame(scene, { width: 680, height: portrait ? 380 : 330, title: 'One more truck?', subtitle: 'Time and a half: it pays 1.5x the usual rate.' });
+    const buttonY = frame.height / 2 - 37 * S - 16 * S - (buttonHeight / 2) * S;
+    const yes = addPillButton(scene, (portrait ? -145 : -135) * S, buttonY, { width: portrait ? 270 : 240, height: buttonHeight, label: "Sure, I'll do it", fontSize: buttonFont });
+    const no = addPillButton(scene, (portrait ? 145 : 135) * S, buttonY, { width: portrait ? 270 : 240, height: buttonHeight, label: 'No thanks', fontSize: buttonFont, style: 'secondary' });
     frame.box.add([yes, no]);
 
     let chosen = false;
@@ -142,32 +147,34 @@ export function showOvertimeOffer(scene, { onAccept, onDecline })
 export function showHintOffer(scene, { cost, canAfford, onBuy, onClose })
 {
     const S = UI_SCALE;
+    const portrait = isPortrait(scene);
     const frame = buildFrame(scene, {
-        width: 680, height: 410, title: 'Need another hint?', subtitle: "This puzzle's free hint is used up.", subtitleColor: '#6b6354', head: 'worker-head-sad',
+        width: 680, height: portrait ? 500 : 410, title: 'Need another hint?', subtitle: "This puzzle's free hint is used up.", subtitleColor: '#6b6354', head: 'worker-head-sad',
     });
-    const buttonY = frame.height / 2 - 37 * S - 16 * S - 100 * S;
-    const closeY = frame.height / 2 - 37 * S - 12 * S - 20 * S;
+    const closeHeight = portrait ? 76 : 40;
+    const buttonY = frame.height / 2 - 37 * S - 16 * S - (portrait ? 190 : 100) * S;
+    const closeY = frame.height / 2 - 37 * S - 12 * S - (closeHeight / 2) * S;
 
     // "Buy a hint" then the price underneath; greyed out with a reason when the wallet is short.
     const buy = addPillButton(scene, 0, buttonY, {
-        width: 280, height: 84, label: 'Buy a hint', fontSize: 22, labelY: -14, style: canAfford ? 'primary' : 'disabled',
+        width: portrait ? 340 : 280, height: portrait ? 112 : 84, label: 'Buy a hint', fontSize: portrait ? 30 : 22, labelY: portrait ? -20 : -14, style: canAfford ? 'primary' : 'disabled',
     });
     if (canAfford)
     {
-        buy.add(addMoneyText(scene, 0, 16 * S, cost, { fontSize: 22 * S, fontStyle: '600', color: '#3a362f', align: 'center' }));
+        buy.add(addMoneyText(scene, 0, (portrait ? 22 : 16) * S, cost, { fontSize: (portrait ? 30 : 22) * S, fontStyle: '600', color: '#3a362f', align: 'center' }));
     }
     else
     {
         // Greyed out: the price in grey, and the reason just under the button.
-        buy.add(addMoneyText(scene, 0, 16 * S, cost, { fontSize: 22 * S, fontStyle: '600', color: '#8a8272', align: 'center' }));
+        buy.add(addMoneyText(scene, 0, (portrait ? 22 : 16) * S, cost, { fontSize: (portrait ? 30 : 22) * S, fontStyle: '600', color: '#8a8272', align: 'center' }));
         frame.box.add(
             scene.add
-                .text(0, buttonY + 42 * S + 10 * S, 'Not enough money', { fontFamily: 'Fredoka, Arial', fontStyle: '600', fontSize: 16 * S, color: '#b5472f' })
+                .text(0, buttonY + (portrait ? 56 : 42) * S + 10 * S, 'Not enough money', { fontFamily: 'Fredoka, Arial', fontStyle: '600', fontSize: (portrait ? 24 : 16) * S, color: '#b5472f' })
                 .setOrigin(0.5)
         );
     }
 
-    const close = addPillButton(scene, 0, closeY, { width: 160, height: 40, label: 'No thanks', fontSize: 18, style: 'secondary' });
+    const close = addPillButton(scene, 0, closeY, { width: portrait ? 280 : 160, height: closeHeight, label: 'No thanks', fontSize: portrait ? 28 : 18, style: 'secondary' });
     frame.box.add([buy, close]);
 
     let chosen = false;
@@ -200,10 +207,12 @@ export function showHintOffer(scene, { cost, canAfford, onBuy, onClose })
 export function showConfirm(scene, { title, subtitle, onYes, onNo })
 {
     const S = UI_SCALE;
-    const frame = buildFrame(scene, { width: 680, height: 350, title, subtitle, subtitleColor: '#6b6354', head: 'worker-head-sad' });
-    const buttonY = frame.height / 2 - 37 * S - 16 * S - 38 * S;
-    const yes = addImageButton(scene, -120 * S, buttonY, 'button-yes', 76);
-    const no = addImageButton(scene, 120 * S, buttonY, 'button-no', 76);
+    // Big buttons on a phone (124 design px tall, was 96; the panel grows to hold them). The PC layout keeps its original 76.
+    const buttonHeight = isPortrait(scene) ? 124 : 76;
+    const frame = buildFrame(scene, { width: 680, height: isPortrait(scene) ? 440 : 350, title, subtitle, subtitleColor: '#6b6354', head: 'worker-head-sad' });
+    const buttonY = frame.height / 2 - 37 * S - 16 * S - (buttonHeight / 2) * S;
+    const yes = addImageButton(scene, (isPortrait(scene) ? -165 : -120) * S, buttonY, 'button-yes', buttonHeight);
+    const no = addImageButton(scene, (isPortrait(scene) ? 165 : 120) * S, buttonY, 'button-no', buttonHeight);
     frame.box.add([yes, no]);
 
     // Only the first press counts, even if both are hit while the popup is closing.
@@ -238,7 +247,7 @@ export function showShopNotice(scene, { itemName, shortBy, unlockDay, onClose })
     const notUnlocked = shortBy === undefined;
     const frame = buildFrame(scene, {
         width: 680,
-        height: 360,
+        height: isPortrait(scene) ? 400 : 360,
         title: notUnlocked ? 'Not unlocked yet!' : 'Not enough money!',
         subtitle: notUnlocked ? 'Not in stock yet.' : `You can't afford the ${itemName} yet.`,
         subtitleColor: '#6b6354',
@@ -265,8 +274,9 @@ export function showShopNotice(scene, { itemName, shortBy, unlockDay, onClose })
             addMoneyText(scene, frame.textX + label.width + 12 * S, lineY, shortBy, { fontFamily: 'Fredoka, Arial Black', fontStyle: '700', fontSize: 30 * S, color: '#b5472f' })
         );
     }
-    const buttonY = frame.height / 2 - 37 * S - 16 * S - 28 * S;
-    const ok = addPillButton(scene, 0, buttonY, { width: 200, height: 56, label: 'OK', fontSize: 24 });
+    const okHeight = isPortrait(scene) ? 84 : 56;
+    const buttonY = frame.height / 2 - 37 * S - 16 * S - (okHeight / 2) * S;
+    const ok = addPillButton(scene, 0, buttonY, { width: isPortrait(scene) ? 260 : 200, height: okHeight, label: 'OK', fontSize: isPortrait(scene) ? 32 : 24 });
     frame.box.add([...extra, ok]);
 
     let closed = false;

@@ -12,14 +12,16 @@
   ],
 
   "workload": [
-    { "fromDay": 1,  "toDay": 1,    "trucks": [ { "tier": "easy", "count": 3 } ] },
-    { "fromDay": 2,  "toDay": 5,    "trucks": [ { "tier": "easy", "count": 4 } ] },
-    { "fromDay": 6,  "toDay": 14,   "trucks": [ { "tier": "easy", "count": 3 }, { "tier": "medium", "count": 1 } ] },
-    { "fromDay": 15, "toDay": 19,   "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 } ] },
-    { "fromDay": 20, "toDay": 25,   "trucks": [ { "tier": "easy", "count": 3 }, { "tier": "medium", "count": 2 } ] },
-    { "fromDay": 26, "toDay": 30,   "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 3 } ] },
-    { "fromDay": 31, "toDay": 39,   "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 }, { "tier": "hard", "count": 1 } ] },
-    { "fromDay": 40, "toDay": null, "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 }, { "tier": "hard", "count": 2 } ] }
+    { "fromDay": 1, "toDay": 1, "trucks": [ { "tier": "easy", "count": 3 } ] },
+    { "fromDay": 2, "toDay": 2, "trucks": [ { "tier": "easy", "count": 4 } ] },
+    { "fromDay": 3, "toDay": 5, "trucks": [ { "tier": "easy", "count": 3 }, { "tier": "medium", "count": 1 } ] },
+    { "fromDay": 6, "toDay": 10, "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 } ] },
+    { "fromDay": 11, "toDay": 15, "trucks": [ { "tier": "easy", "count": 1 }, { "tier": "medium", "count": 3 } ] },
+    { "fromDay": 16, "toDay": 19, "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 3 } ] },
+    { "fromDay": 20, "toDay": 24, "trucks": [ { "tier": "easy", "count": 1 }, { "tier": "medium", "count": 4 } ] },
+    { "fromDay": 25, "toDay": 29, "trucks": [ { "tier": "easy", "count": 2 }, { "tier": "medium", "count": 2 }, { "tier": "hard", "count": 1 } ] },
+    { "fromDay": 30, "toDay": 39, "trucks": [ { "tier": "easy", "count": 1 }, { "tier": "medium", "count": 3 }, { "tier": "hard", "count": 1 } ] },
+    { "fromDay": 40, "toDay": null, "trucks": [ { "tier": "easy", "count": 1 }, { "tier": "medium", "count": 3 }, { "tier": "hard", "count": 2 } ] }
   ],
 
   "bonuses": [
@@ -31,7 +33,7 @@
     { "id": "finale",      "label": "Finale bonus",      "day": 50, "amount": 250, "enabled": false }
   ],
 
-  "hints": { "costUnits": 3 },
+  "hints": { "costUnits": 4 },
 
   "overtime": {
     "enabled": true,
@@ -67,11 +69,11 @@
     { "id": "bed",           "name": "Bed",           "category": "furniture", "unlockDay": 22, "price": 350, "enabled": true },
     { "id": "fridge",        "name": "Fridge",        "category": "furniture", "unlockDay": 32, "price": 600, "enabled": true },
 
-    { "id": "lux-1",         "name": "Luxury Item 1", "category": "luxury",    "unlockDay": 24, "price": 300, "enabled": false },
-    { "id": "lux-2",         "name": "Luxury Item 2", "category": "luxury",    "unlockDay": 28, "price": 350, "enabled": false },
-    { "id": "lux-3",         "name": "Luxury Item 3", "category": "luxury",    "unlockDay": 34, "price": 450, "enabled": false },
-    { "id": "lux-4",         "name": "Luxury Item 4", "category": "luxury",    "unlockDay": 38, "price": 500, "enabled": false },
-    { "id": "lux-5",         "name": "Luxury Item 5", "category": "luxury",    "unlockDay": 42, "price": 550, "enabled": false },
-    { "id": "lux-6",         "name": "Luxury Item 6", "category": "luxury",    "unlockDay": 46, "price": 700, "enabled": false }
+    { "id": "lux-1",         "name": "Luxury Item 1", "category": "luxury",    "unlockDay": 24, "price": 350, "enabled": false },
+    { "id": "lux-2",         "name": "Luxury Item 2", "category": "luxury",    "unlockDay": 28, "price": 400, "enabled": false },
+    { "id": "lux-3",         "name": "Luxury Item 3", "category": "luxury",    "unlockDay": 34, "price": 550, "enabled": false },
+    { "id": "lux-4",         "name": "Luxury Item 4", "category": "luxury",    "unlockDay": 38, "price": 600, "enabled": false },
+    { "id": "lux-5",         "name": "Luxury Item 5", "category": "luxury",    "unlockDay": 42, "price": 650, "enabled": false },
+    { "id": "lux-6",         "name": "Luxury Item 6", "category": "luxury",    "unlockDay": 46, "price": 750, "enabled": false }
   ]
 }

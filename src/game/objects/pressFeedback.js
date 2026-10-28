@@ -5,9 +5,12 @@
  * an image, a text button - without separate artwork for each state):
  *   - HOVER:   the button grows smoothly while the mouse is over it, and eases back to its normal
  *              size when the mouse leaves.
- *   - PRESS:   when pressed it squashes down a little (below its normal size), and when let go it
+ *   - PRESS:   with a MOUSE it squashes down a little (below its normal size), and when let go it
  *              springs back with a small overshoot - to the hover size if the mouse is still on it,
  *              otherwise to normal.
+ *   - TOUCH:   a finger covers the button, so a squash would be hidden and there is no hover; instead the
+ *              button GROWS while the finger is down (TOUCH_PRESSED_SCALE) and springs back to normal when
+ *              the finger lifts or slides off. That is the "I pressed it" feedback on a phone.
  * All three are one size multiplier `k` (1 = normal) applied to the button's own scale, so the
  * states blend into each other instead of fighting.
  */
@@ -17,6 +20,8 @@ import { playSfx } from '../audio.js';
 /** Size multipliers for each state (1 = the button's normal size). */
 const HOVER_SCALE = 1.08;
 const PRESSED_SCALE = 0.9;
+/** How much bigger a button gets while a FINGER is held on it (see the TOUCH note above). */
+const TOUCH_PRESSED_SCALE = 1.14;
 const HOVER_MS = 120;
 const PRESS_MS = 70;
 const RELEASE_MS = 170;
@@ -38,9 +43,12 @@ const RELEASE_MS = 170;
  *   squash is visible. Use ~120 for buttons that change scene (the old scene is gone the instant
  *   they act, so there would be nothing to see); 0 for buttons that act in place. A button with a
  *   delay can only be activated once (a second quick click is ignored).
+ * @param {number} [options.hoverScale] - how much bigger the button gets while the mouse is over it
+ *   (1 = no growth). Defaults to HOVER_SCALE; the wallpaper swatches ask for a bigger pop.
  */
 export function makePressable(scene, target, onActivate, options = {}) {
     const delay = options.delay ?? 0;
+    const hoverScale = options.hoverScale ?? HOVER_SCALE;
     let activated = false;
     let hovering = false;
     let pressing = false;
@@ -108,13 +116,18 @@ export function makePressable(scene, target, onActivate, options = {}) {
      */
     const settle = (ease = 'Sine.easeOut') => {
         if (hovering) {
-            animateTo(HOVER_SCALE, HOVER_MS, ease);
+            animateTo(hoverScale, HOVER_MS, ease);
         } else if (k !== 1) {
             animateTo(1, RELEASE_MS, ease);
         }
     };
 
-    target.on('pointerover', () => {
+    target.on('pointerover', (pointer) => {
+        // A finger has no "hover": Phaser still fires pointerover as the touch lands, which would leave
+        // the button stuck at the hover size after the press, so touch is ignored here.
+        if (pointer?.wasTouch) {
+            return;
+        }
         hovering = true;
         target.setData('hovered', true);
         if (!pressing) {
@@ -129,12 +142,13 @@ export function makePressable(scene, target, onActivate, options = {}) {
         settle('Back.easeOut');
     });
 
-    target.on('pointerdown', () => {
+    target.on('pointerdown', (pointer) => {
         if (activated) {
             return;
         }
         pressing = true;
-        animateTo(PRESSED_SCALE, PRESS_MS, 'Quad.easeOut');
+        // Finger: grow (it stays visible beside the fingertip). Mouse: squash.
+        animateTo(pointer?.wasTouch ? TOUCH_PRESSED_SCALE : PRESSED_SCALE, PRESS_MS, 'Quad.easeOut');
         playSfx(scene, 'pop');
 
         if (delay > 0) {

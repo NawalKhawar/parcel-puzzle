@@ -66,13 +66,17 @@ const MEDIUM_MAX = 0.67;
  * level plan - edit it to change how many trucks a day has and how they ramp:
  *
  *   Level 1       : 3 trucks - 3 easy
- *   Levels 2-5    : 4 trucks - 4 easy
- *   Levels 6-14   : 4 trucks - 3 easy, 1 medium
- *   Levels 15-19  : 4 trucks - 2 easy, 2 medium
- *   Levels 20-25  : 5 trucks - 3 easy, 2 medium   (business booms: one more truck from level 20)
- *   Levels 26-30  : 5 trucks - 2 easy, 3 medium
- *   Levels 31-39  : 5 trucks - 2 easy, 2 medium, 1 hard
- *   Levels 40-50  : 6 trucks - 2 easy, 2 medium, 2 hard   (another workload increase at level 40)
+ *   Level 2       : 4 trucks - 4 easy
+ *   Levels 3-5    : 4 trucks - 3 easy, 1 medium
+ *   Levels 6-10   : 4 trucks - 2 easy, 2 medium
+ *   Levels 11-15  : 4 trucks - 1 easy, 3 medium
+ *   Levels 16-19  : 5 trucks - 2 easy, 3 medium
+ *   Levels 20-24  : 5 trucks - 1 easy, 4 medium
+ *   Levels 25-29  : 5 trucks - 2 easy, 2 medium, 1 hard
+ *   Levels 30-39  : 5 trucks - 1 easy, 3 medium, 1 hard
+ *   Levels 40-50  : 6 trucks - 1 easy, 3 medium, 2 hard
+ *
+ * This MUST match the "workload" table in src/data/economy.json (a test compares them).
  *
  * @param {number} levelNumber - 1-based level number.
  * @returns {Array<'easy' | 'medium' | 'hard'>}
@@ -80,13 +84,15 @@ const MEDIUM_MAX = 0.67;
 function labelsForLevel(levelNumber) {
     const [E, M, H] = ['easy', 'medium', 'hard'];
     if (levelNumber === 1) return [E, E, E];
-    if (levelNumber <= 5) return [E, E, E, E];
-    if (levelNumber <= 14) return [E, E, E, M];
-    if (levelNumber <= 19) return [E, E, M, M];
-    if (levelNumber <= 25) return [E, E, E, M, M];
-    if (levelNumber <= 30) return [E, E, M, M, M];
-    if (levelNumber <= 39) return [E, E, M, M, H];
-    return [E, E, M, M, H, H];
+    if (levelNumber === 2) return [E, E, E, E];
+    if (levelNumber <= 5) return [E, E, E, M];
+    if (levelNumber <= 10) return [E, E, M, M];
+    if (levelNumber <= 15) return [E, M, M, M];
+    if (levelNumber <= 19) return [E, E, M, M, M];
+    if (levelNumber <= 24) return [E, M, M, M, M];
+    if (levelNumber <= 29) return [E, E, M, M, H];
+    if (levelNumber <= 39) return [E, M, M, M, H];
+    return [E, M, M, M, H, H];
 }
 
 /**
@@ -136,9 +142,9 @@ function targetDifficulty(levelNumber, truckIndex) {
     }
 
     // How far through the campaign this level is, measured from the level at which this label first
-    // appears (so the first medium truck, level 6, starts at the bottom of the medium band, and the
-    // first hard truck, level 31, at the bottom of the hard band): 0 there, 1 at the last level.
-    const FIRST_LEVEL = { easy: 2, medium: 6, hard: 31 };
+    // appears (so the first medium truck, level 3, starts at the bottom of the medium band, and the
+    // first hard truck, level 25, at the bottom of the hard band): 0 there, 1 at the last level.
+    const FIRST_LEVEL = { easy: 2, medium: 3, hard: 25 };
     const progress = clamp01((levelNumber - FIRST_LEVEL[label]) / (LEVEL_COUNT - FIRST_LEVEL[label]));
     // [low end, high end] of each band at the first level and at the last level.
     const bands = {

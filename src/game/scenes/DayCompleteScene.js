@@ -13,6 +13,10 @@ import { startDay } from '../dayFlow.js';
 import { isTutorialSkippable, skipTutorial } from '../progress.js';
 import { addSkipButton } from '../objects/skipButton.js';
 import { playJingle } from '../audio.js';
+import { isPortrait } from '../layout.js';
+import { addBadgeToImage } from '../objects/badge.js';
+import { trackDayComplete } from '../../analytics.js';
+import { shopHasBuyable, apartmentHasNew } from '../../core/badges.js';
 
 /**
  * DayCompleteScene.js
@@ -35,6 +39,11 @@ import { playJingle } from '../audio.js';
  *               if the next day brings a raise or a one-time bonus. On the very last level there is no next day, so this button becomes
  *               "Finish" and returns to the title screen.
  *
+ * On a phone (portrait canvas) the clipboard is the hand-made tall picture assets/mobile/clipboard-screen-portrait.webp
+ * drawn as a 9-slice (only its plain paper stretches, so any phone height gets a whole clipboard), the rows use
+ * the full paper width in one column at a larger text size, and the three buttons stack vertically at the
+ * bottom (see the PORTRAIT_* constants).
+ *
  * PuzzleScene launches this on top of itself (paused); the clipboard art covers the whole screen. Shop and Apartment hand
  * this scene's data back via their Back buttons, which restart this scene so the popup
  * reappears exactly as the player left it.
@@ -48,6 +57,36 @@ const ROWS_BOTTOM_LIMIT = 560;
 
 /** Gap (design pixels) from the bottom of the report text down to the centre of the button row. */
 const BUTTONS_GAP = 95;
+
+/**
+ * Portrait layout, in design pixels (the canvas is 720 wide and 1150-1560 tall). The clipboard picture is
+ * drawn at the scale that makes it exactly as wide as the canvas (720 / 924 = 0.78), so its wood frame is
+ * about 66 px thick on each side, the clip and the printed company header end about 226 px down, and the
+ * paper's bottom edge is about 72 px above the canvas bottom.
+ *  - PORTRAIT_TITLE_Y / PORTRAIT_HEADER_HEIGHT: y of the "Day N - End of Day Report" title and of the first report row;
+ *  - PORTRAIT_ROW_HEIGHT: the preferred spacing of the report's rows (they squeeze together if many);
+ *  - PORTRAIT_SIDE: how far in from the canvas edge the rows' text starts (clear of the wood border);
+ *  - the three buttons are stacked PORTRAIT_BUTTON_PITCH apart, each PORTRAIT_BUTTON_HEIGHT tall (a fingertip
+ *    needs at least ~76; these are big), starting just UNDER the last line of the report so there is no empty gap
+ *    between the text and the buttons. The lowest is never lower than PORTRAIT_BUTTON_FROM_BOTTOM above the canvas
+ *    bottom (inside the paper, clear of a phone's home-indicator strip);
+ *  - PORTRAIT_BUTTON_BELOW_TEXT: from the centre of the last line to the centre of the first button;
+ *  - PORTRAIT_ROWS_BOTTOM_MARGIN: how far above the canvas bottom the last row may reach, so the buttons fit
+ *    under it;
+ *  - CLIPBOARD_ART_MARGINS: the 9-slice margins in the picture's own pixels (trimmed 924x1617 file): the top
+ *    340 rows (clip, header and a little paper) and bottom 137 rows (the lower paper edge and wood) never
+ *    stretch, nor do the 80-px side columns; only the plain paper between stretches.
+ */
+const PORTRAIT_TITLE_Y = 282;
+const PORTRAIT_HEADER_HEIGHT = 378;
+const PORTRAIT_ROW_HEIGHT = 60;
+const PORTRAIT_SIDE = 104;
+const PORTRAIT_BUTTON_FROM_BOTTOM = 150;
+const PORTRAIT_BUTTON_PITCH = 128;
+const PORTRAIT_BUTTON_HEIGHT = 108;
+const PORTRAIT_BUTTON_BELOW_TEXT = 104;
+const PORTRAIT_ROWS_BOTTOM_MARGIN = 480;
+const CLIPBOARD_ART_MARGINS = { left: 80, right: 80, top: 340, bottom: 137 };
 
 /** The total line's text colour - a warm rust, so it stands out from the dark-brown rows and green bonuses. */
 const TOTAL_COLOR = '#c0501f';
@@ -82,6 +121,11 @@ export class DayCompleteScene extends Scene
     {
         const S = UI_SCALE;
         const data = this.dayData;
+        // Analytics: the end-of-day results appeared = the workday is complete (sent once; a rebuilt screen sends nothing more).
+        trackDayComplete(data.levelIndex + 1);
+        const portrait = isPortrait(this);
+        /** The canvas height in design pixels (the portrait canvas varies with the phone's shape). */
+        const designHeight = this.scale.height / S;
 
         // This is a screen of its own: hide the paused game scene underneath and paint the
         // background black (it shows through the clipboard art's rounded corners).
@@ -102,7 +146,22 @@ export class DayCompleteScene extends Scene
         // The clipboard art fills the whole screen (this is its own screen now, not a popup over
         // the board). The art already has the company name and department printed on it, so
         // none of that is drawn in code.
-        this.add.image(centerX, centerY, 'clipboard-screen').setDisplaySize(this.scale.width, this.scale.height);
+        if (portrait)
+        {
+            // The clipboard is a 9-slice so the paper can be as tall as the phone is: the art is drawn at the
+            // scale that makes it exactly as wide as the canvas, and only its middle rows stretch downwards.
+            const artWidth = this.textures.get('clipboard-screen-portrait').getSourceImage().width;
+            const artScale = this.scale.width / artWidth;
+            this.add
+                .nineslice(0, 0, 'clipboard-screen-portrait', undefined, artWidth, this.scale.height / artScale,
+                    CLIPBOARD_ART_MARGINS.left, CLIPBOARD_ART_MARGINS.right, CLIPBOARD_ART_MARGINS.top, CLIPBOARD_ART_MARGINS.bottom)
+                .setOrigin(0, 0)
+                .setScale(artScale);
+        }
+        else
+        {
+            this.add.image(centerX, centerY, 'clipboard-screen').setDisplaySize(this.scale.width, this.scale.height);
+        }
 
         // ---- Work out the paycheck's lines first, so the layout can be sized to fit them.
         // One line per truck packed (tier name and what it paid), then the "single" lines under
@@ -110,7 +169,7 @@ export class DayCompleteScene extends Scene
         // new balance. A long day (5+ trucks) puts the truck lines in two columns to save height.
         const truckLog = data.truckLog ?? [];
         const bonuses = data.bonuses ?? [];
-        const truckColumns = truckLog.length > 4 ? 2 : 1;
+        const truckColumns = !portrait && truckLog.length > 4 ? 2 : 1;
         const truckRows = Math.ceil(truckLog.length / truckColumns);
         const singles = [];
         for (const bonus of bonuses)
@@ -128,12 +187,17 @@ export class DayCompleteScene extends Scene
         // Vertical layout in design pixels, measured on the clipboard art: the printed heading block
         // ends around y=175, so the "Day N report" title sits just under it, then the rows, then
         // the buttons below the last row (kept above the bottom edge of the paper at ~y=686).
-        const titleY = 244;
-        const headerHeight = 330; // y of the first report row
+        const titleY = portrait ? PORTRAIT_TITLE_Y : 244;
+        const headerHeight = portrait ? PORTRAIT_HEADER_HEIGHT : 330; // y of the first report row
         // Spread the rows out generously, but squeeze them together when a long report would
         // otherwise run into the buttons. The last-level note needs extra room.
-        const noteRoom = data.isLastLevel ? 30 : 0;
-        const rowHeight = Math.max(34, Math.min(ROW_HEIGHT, (ROWS_BOTTOM_LIMIT - noteRoom - headerHeight) / Math.max(1, rowCount - 1)));
+        const noteRoom = data.isLastLevel ? (portrait ? 46 : 30) : 0;
+        // On a phone the rows may reach down to just above the stacked buttons, which depends on the canvas height.
+        const rowsBottomLimit = portrait ? designHeight - PORTRAIT_ROWS_BOTTOM_MARGIN : ROWS_BOTTOM_LIMIT;
+        const rowHeight = Math.max(portrait ? 30 : 34, Math.min(portrait ? PORTRAIT_ROW_HEIGHT : ROW_HEIGHT, (rowsBottomLimit - noteRoom - headerHeight) / Math.max(1, rowCount - 1)));
+        // Portrait text shrinks a little when the rows are squeezed (never below 24 design px).
+        const fontFactor = Math.max(0.75, Math.min(1, rowHeight / 56));
+        const portraitFont = (size) => Math.max(24, Math.round(size * fontFactor));
         // The buttons follow the text: a fixed gap below the last line, so they ride down when
         // the report is longer and up when it is shorter.
         const buttonsOffset = headerHeight + (rowCount - 1) * rowHeight + noteRoom + BUTTONS_GAP;
@@ -142,18 +206,18 @@ export class DayCompleteScene extends Scene
         this.add
             .text(centerX, titleY * S, `Day ${data.levelIndex + 1} - End of Day Report`, {
                 fontFamily: 'Fredoka, Arial Black', fontStyle: '700',
-                fontSize: 44 * S,
+                fontSize: (portrait ? 40 : 44) * S,
                 color: '#3a362f',
             })
             .setOrigin(0.5);
 
         // A thin rule under the title, in the same tone as the receipt-style total rule below.
-        this.add.rectangle(centerX, (titleY + 42) * S, 640 * S, 2 * S, 0xcfc3a8);
+        this.add.rectangle(centerX, (titleY + (portrait ? 40 : 42)) * S, (portrait ? 520 : 640) * S, 2 * S, 0xcfc3a8);
 
         // ---- The truck lines: "Truck 2 · Medium" on the left, the amount (with the currency note
         // icon, see objects/money.js) on the right. Two columns share the paper's 600-wide text area.
-        const labelX = centerX - 300 * S;
-        const valueX = centerX + 300 * S;
+        const labelX = portrait ? PORTRAIT_SIDE * S : centerX - 300 * S;
+        const valueX = portrait ? this.scale.width - PORTRAIT_SIDE * S : centerX + 300 * S;
         const columnWidth = 285 * S;
         truckLog.forEach((truck, index) => {
             const column = index % truckColumns;
@@ -162,7 +226,7 @@ export class DayCompleteScene extends Scene
             const right = truckColumns === 1 ? valueX : left + columnWidth;
             const style = {
                 fontFamily: 'Fredoka, Arial', fontStyle: '400',
-                fontSize: (truckColumns === 1 ? 29 : 24) * S,
+                fontSize: (portrait ? portraitFont(32) : truckColumns === 1 ? 29 : 24) * S,
                 color: truck.overtime ? TOTAL_COLOR : '#3a362f',
             };
             const name = economy.tiers[truck.tier].name;
@@ -177,13 +241,13 @@ export class DayCompleteScene extends Scene
             if (row.total)
             {
                 // A thin rule above the total, like the sum line on a receipt.
-                this.add.rectangle(centerX, y - (rowHeight / 2) * S, 600 * S, 2 * S, 0xcfc3a8);
+                this.add.rectangle(centerX, y - (rowHeight / 2) * S, (portrait ? 520 : 600) * S, 2 * S, 0xcfc3a8);
             }
 
             const style = {
                 fontFamily: row.total || row.notice ? 'Fredoka, Arial Black' : 'Fredoka, Arial',
                 fontStyle: row.total || row.notice || row.balance ? '700' : '400',
-                fontSize: (row.total ? 34 : row.notice ? 30 : 29) * S,
+                fontSize: (portrait ? portraitFont(row.total ? 38 : row.notice ? 34 : 32) : row.total ? 34 : row.notice ? 30 : 29) * S,
                 color: row.color ?? '#3a362f',
             };
             if (row.notice)
@@ -200,7 +264,7 @@ export class DayCompleteScene extends Scene
             this.add
                 .text(centerX, panelTop + (headerHeight + (rowCount - 1) * rowHeight + noteRoom) * S, "That's every level - great work!", {
                     fontFamily: 'Fredoka, Arial', fontStyle: '400',
-                    fontSize: 22 * S,
+                    fontSize: (portrait ? 24 : 22) * S,
                     color: '#6b6354',
                 })
                 .setOrigin(0.5);
@@ -209,7 +273,7 @@ export class DayCompleteScene extends Scene
         // ---- Three picture buttons in a row (the labels are painted into the pictures). Their widths
         // differ, so they're laid out from those: centred as a group with an even gap between them.
         const buttonY = panelTop + buttonsOffset * S;
-        const BUTTON_HEIGHT = 78; // design px (height of the painted button)
+        const BUTTON_HEIGHT = portrait ? PORTRAIT_BUTTON_HEIGHT : 78; // design px (height of the painted button)
         const BUTTON_GAP = 20 * S;
         const lastButton = data.isLastLevel
             ? ['button-finish', () => {
@@ -251,9 +315,23 @@ export class DayCompleteScene extends Scene
         const guided = stage === 'shop' ? 0 : stage === 'decorate' ? 1 : -1;
         /** The hand cursor demonstrating the press on the guided button, if any. */
         let handCursor = null;
+        const lastLineY = headerHeight + (rowCount - 1) * rowHeight + noteRoom;
+        const stackTop = Math.min(
+            (lastLineY + PORTRAIT_BUTTON_BELOW_TEXT) * S,
+            this.scale.height - (PORTRAIT_BUTTON_FROM_BOTTOM + (specs.length - 1) * PORTRAIT_BUTTON_PITCH) * S
+        );
         buttons.forEach((button, i) => {
-            button.setX(cursorX + button.visibleWidth / 2);
-            cursorX += button.visibleWidth + BUTTON_GAP;
+            if (portrait)
+            {
+                // Stacked in a column, Shop at the top and the last button lowest, all centred: the top one just
+                // under the last line of the report (but the stack never goes lower than PORTRAIT_BUTTON_FROM_BOTTOM).
+                button.setPosition(centerX, stackTop + i * PORTRAIT_BUTTON_PITCH * S);
+            }
+            else
+            {
+                button.setX(cursorX + button.visibleWidth / 2);
+                cursorX += button.visibleWidth + BUTTON_GAP;
+            }
 
             const blocked = guided !== -1 && ((i === 2) || (i === 1 && guided === 0));
             if (blocked)
@@ -280,6 +358,18 @@ export class DayCompleteScene extends Scene
                 if (i === 1) this.registry.set('decorateVisited', true);
                 specs[i][1]();
             }, { delay: 140 });
+
+            // The red dot on the button's corner: Shop when something can be bought now, Decorate when the
+            // inventory holds an item the player has not seen yet (rules in core/badges.js). Added after the
+            // button is positioned and pressable, and only on buttons that work (a locked one gets no dot).
+            if (i === 0)
+            {
+                addBadgeToImage(this, button, shopHasBuyable(data.levelIndex + 1, wallet, economy));
+            }
+            else if (i === 1)
+            {
+                addBadgeToImage(this, button, apartmentHasNew(wallet.ownedItems, this.registry.get('seenItems') ?? []));
+            }
         });
 
         // A returning player can skip the tutorial: the trail's pulse, hand and locks, and the worker's
@@ -287,8 +377,12 @@ export class DayCompleteScene extends Scene
         if (stage !== 'free' && isTutorialSkippable(this.registry))
         {
             addSkipButton(this, {
-                x: this.scale.width - 175 * S,
-                y: 125 * S,
+                // Landscape: the top-right corner of the paper. Portrait: on the empty paper just BELOW the
+                // button stack (the stack now follows the report text closely), within thumb reach and a
+                // finger-sized 100 tall.
+                x: portrait ? this.scale.width - 200 * S : this.scale.width - 175 * S,
+                y: portrait ? Math.min(buttons[2].y + (PORTRAIT_BUTTON_HEIGHT / 2 + 64) * S, this.scale.height - 110 * S) : 125 * S,
+                height: portrait ? 84 : undefined,
                 depth: 900,
                 onSkip: () => {
                     skipTutorial(this.registry);
@@ -302,14 +396,15 @@ export class DayCompleteScene extends Scene
         if (firstDay && !this.registry.get('shopTipShown'))
         {
             this.registry.set('shopTipShown', true);
-            const width = 480;
-            const scale = 1.05;
+            const width = portrait ? 560 : 480;
+            const scale = portrait ? 1 : 1.05;
             showCornerTip(this, {
                 message: 'Oh sweet, I can get some stuff for my room!',
                 head: 'worker-head',
                 // Big, so it is hard to miss: it covers the lower-right of the screen for a few seconds.
-                left: this.scale.width - (12 + width * scale) * S,
-                bottom: this.scale.height - 12 * S,
+                // Landscape: the lower-right corner. Portrait: centred, low on the paper under the stacked buttons (they follow the report text closely, so above them is text).
+                left: portrait ? (this.scale.width - width * scale * S) / 2 : this.scale.width - (12 + width * scale) * S,
+                bottom: portrait ? this.scale.height - 100 * S : this.scale.height - 12 * S,
                 width,
                 scale,
             });

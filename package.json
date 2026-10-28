@@ -28,6 +28,7 @@
     "vite": "^6.3.1"
   },
   "dependencies": {
+    "gameanalytics": "^5.0.0",
     "phaser": "4.2.1"
   }
 }

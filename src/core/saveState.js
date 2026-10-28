@@ -21,6 +21,12 @@
  *   rank              the pay rank in force on `day`. Informational: the game always works the rank
  *                     out from the day, so a hand-edited value can never change the pay.
  *   placedItems       [{ id, x, y }] - the furniture in the apartment, by the tile its corner is on.
+ *   placedItemsPortrait
+ *                     the same for the apartment's PHONE (portrait) room, which is a different shape
+ *                     (narrower and taller, so a different tile grid) and so keeps its own arrangement.
+ *   seenItems         ids of the owned items the player has already seen in the apartment's inventory;
+ *                     owned items NOT in this list make the Decorate button show its red dot (core/badges.js).
+ *                     A save from before this field existed counts everything owned as seen.
  *   wallpaper         the chosen wallpaper's id, or null for the original wall.
  *   muted             { music, sfx } - the two pause-menu toggles.
  *   seenIntro         true once the first-day guide has been completed.
@@ -66,6 +72,8 @@ export function defaultSaveState()
         claimedBonuses: [],
         rank: 1,
         placedItems: [],
+        placedItemsPortrait: [],
+        seenItems: [],
         wallpaper: null,
         muted: { music: false, sfx: false },
         seenIntro: false,
@@ -197,6 +205,9 @@ export function mergeSave(raw, { maxDay = Infinity } = {})
         claimedBonuses: idList(raw.claimedBonuses),
         rank: wholeNumber(raw.rank, 1, defaults.rank),
         placedItems: placedList(raw.placedItems),
+        placedItemsPortrait: placedList(raw.placedItemsPortrait),
+        // An older save has no list: everything it owns was already available to look at, so none of it is "new".
+        seenItems: raw.seenItems === undefined ? idList(raw.ownedItems) : idList(raw.seenItems),
         wallpaper: typeof raw.wallpaper === 'string' && raw.wallpaper.length > 0 ? raw.wallpaper : null,
         muted: { music: flag(muted.music), sfx: flag(muted.sfx) },
         seenIntro: flag(raw.seenIntro),

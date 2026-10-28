@@ -1,5 +1,6 @@
 import { Scene } from 'phaser';
 import { initSave } from '../progress.js';
+import { initAnalytics } from '../../analytics.js';
 
 /**
  * Boot.js
@@ -18,6 +19,8 @@ export class Boot extends Scene
     create ()
     {
         initSave();
+        // Analytics starts after the save is read. It loads in the background (see analytics.js) and never delays the first screen.
+        initAnalytics();
         this.scene.start('Preloader');
     }
 }

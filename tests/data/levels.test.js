@@ -4,8 +4,8 @@
  * Two groups of tests:
  *   1. loadLevel.js validation rules, using small hand-built levels/trucks.
  *   2. The shipped src/data/levels.json against the game design spec: 50 levels (days) -
- *      1: 3E; 2-5: 4E; 6-14: 3E+1M; 15-19: 2E+2M; 20-25: 3E+2M; 26-30: 2E+3M; 31-39: 2E+2M+1H;
- *      40-50: 2E+2M+2H (E/M/H = easy/medium/hard) - and difficulty never drops within a level. If someone regenerates or hand-edits the data and breaks that shape, these
+ *      1: 3E; 2: 4E; 3-5: 3E+1M; 6-10: 2E+2M; 11-15: 1E+3M; 16-19: 2E+3M; 20-24: 1E+4M; 25-29: 2E+2M+1H;
+ *      30-39: 1E+3M+1H; 40-50: 1E+3M+2H (E/M/H = easy/medium/hard) - and difficulty never drops within a level. If someone regenerates or hand-edits the data and breaks that shape, these
  *      fail with a message naming the level.
  */
 import { test, describe } from 'node:test';
@@ -80,13 +80,15 @@ describe('shipped levels.json matches the game design spec', () => {
     const H = 'hard';
     const PLAN = [
         [1, 1, [E, E, E]],
-        [2, 5, [E, E, E, E]],
-        [6, 14, [E, E, E, M]],
-        [15, 19, [E, E, M, M]],
-        [20, 25, [E, E, E, M, M]],
-        [26, 30, [E, E, M, M, M]],
-        [31, 39, [E, E, M, M, H]],
-        [40, 50, [E, E, M, M, H, H]],
+        [2, 2, [E, E, E, E]],
+        [3, 5, [E, E, E, M]],
+        [6, 10, [E, E, M, M]],
+        [11, 15, [E, M, M, M]],
+        [16, 19, [E, E, M, M, M]],
+        [20, 24, [E, M, M, M, M]],
+        [25, 29, [E, E, M, M, H]],
+        [30, 39, [E, M, M, M, H]],
+        [40, 50, [E, M, M, M, H, H]],
     ];
 
     for (const [first, last, labels] of PLAN) {

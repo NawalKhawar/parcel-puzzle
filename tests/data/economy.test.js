@@ -52,7 +52,7 @@ describe('economy.json validation', () => {
 
     test('workload ranges must follow on with no gap, and the last must be open-ended', () => {
         assert.throws(() => loadEconomy(withChange((d) => { d.workload[1].fromDay = 4; })), /fromDay/);
-        assert.throws(() => loadEconomy(withChange((d) => { d.workload[7].toDay = 60; })), /toDay/);
+        assert.throws(() => loadEconomy(withChange((d) => { d.workload[9].toDay = 60; })), /toDay/);
         assert.throws(() => loadEconomy(withChange((d) => { d.workload[0].trucks[0].tier = 'epic'; })), /unknown tier/);
         assert.throws(() => loadEconomy(withChange((d) => { d.workload[0].trucks[0].count = 0; })), /count/);
     });
